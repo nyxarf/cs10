@@ -6,6 +6,7 @@ import AdminModeration from './pages/AdminModeration';
 import AdminKnowledgeReview from './pages/AdminKnowledgeReview';
 import AdminAnalytics from './pages/AdminAnalytics';
 import AdminUsers from './pages/AdminUsers';
+import SpotlightedQuestions from './pages/SpotlightedQuestions';
 import Layout from './components/Layout';
 import './index.css';
 
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="knowledge" element={<AdminKnowledgeReview />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="spotlight" element={<SpotlightedQuestions />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

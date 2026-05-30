@@ -5,12 +5,13 @@ import {
 } from 'react-icons/lu';
 
 const navItems = [
-  { to: '/dashboard',  label: 'Dashboard',   icon: LuLayoutDashboard },
-  { to: '/faqs',       label: 'FAQs',         icon: LuCircleHelp },
-  { to: '/moderation', label: 'Moderation',   icon: LuShieldCheck },
-  { to: '/knowledge',  label: 'Knowledge Review', icon: LuSparkles },
-  { to: '/users',      label: 'Users',        icon: LuUsers },
-  { to: '/analytics',  label: 'Analytics',    icon: LuChartBar },
+  { to: '/dashboard',  label: 'Dashboard',        icon: LuLayoutDashboard },
+  { to: '/faqs',       label: 'FAQs',              icon: LuCircleHelp },
+  { to: '/moderation', label: 'Moderation',        icon: LuShieldCheck },
+  { to: '/knowledge',  label: 'Knowledge Review',  icon: LuSparkles },
+  { to: '/users',      label: 'Users',             icon: LuUsers },
+  { to: '/analytics',  label: 'Analytics',         icon: LuChartBar },
+  { to: '/spotlight',  label: 'Spotlight',         icon: LuZap, highlight: true },
 ];
 
 const pageTitles = {
@@ -20,6 +21,7 @@ const pageTitles = {
   '/knowledge':  'Knowledge Review',
   '/users':      'User Management',
   '/analytics':  'Analytics',
+  '/spotlight':  'Community Spotlight',
 };
 
 export default function Layout() {
@@ -59,13 +61,14 @@ export default function Layout() {
         {/* Nav */}
         <div className="sidebar-nav">
           <div className="sidebar-section-label">Main Menu</div>
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, label, icon: Icon, highlight }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+              style={highlight ? { color: 'rgba(251,191,36,0.85)' } : undefined}
             >
-              <Icon size={17} />
+              <Icon size={17} style={highlight ? { color: '#FBBF24' } : undefined} />
               {label}
             </NavLink>
           ))}

@@ -22,6 +22,7 @@ router.use(adminMiddleware);
 router.get('/dashboard', adminController.getDashboard);
 router.get('/analytics', adminController.getAnalytics);
 router.get('/query-logs', adminController.getQueryLogs);
+router.get('/groq-logs', adminController.getGroqLogs);
 
 /* ─────────────────────────────────────────────
    Flagged answer review
@@ -40,10 +41,22 @@ router.post('/answers/:id/approve', adminController.approveAnswer);
 router.post('/moderation/:id/approve', adminController.approveAnswer);
 
 /**
+ * Auto-moderate all flagged answers using Groq
+ */
+router.post('/moderation/auto-moderate', adminController.autoModerateAnswers);
+
+/**
  * Reject a flagged answer permanently
  */
 router.post('/answers/:id/reject', adminController.rejectAnswer);
 router.post('/moderation/:id/reject', adminController.rejectAnswer);
+
+/**
+ * Pending Questions moderation
+ */
+router.get('/moderation/questions', adminController.getPendingQuestions);
+router.post('/moderation/questions/:id/approve', adminController.approvePendingQuestion);
+router.post('/moderation/questions/:id/reject', adminController.rejectPendingQuestion);
 
 /**
  * Promote a community answer directly into the FAQ corpus
@@ -157,5 +170,15 @@ router.post('/cluster/run', adminController.clusterFAQs);
 
 router.post('/community/global-ai-cluster', adminController.globalAiCluster);
 router.post('/community/create-master-faq', adminController.createMasterFaq);
+
+/* ─────────────────────────────────────────────
+   Community Spotlight
+   ───────────────────────────────────────────── */
+
+/**
+ * GET /api/admin/spotlight
+ * Returns paginated open, unanswered questions that are older than 2 minutes.
+ */
+router.get('/spotlight', adminController.getSpotlightedQuestions);
 
 export default router;

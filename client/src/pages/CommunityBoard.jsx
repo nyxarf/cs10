@@ -3,27 +3,23 @@ import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import VoteButtons from '../components/VoteButtons';
+import AskQuestionModal from '../components/AskQuestionModal';
 import { FaBolt, FaQuestion, FaCommentDots, FaEye, FaArrowLeft, FaArrowRight } from 'react-icons/fa';
-
-const CATEGORIES = ['all', 'about', 'timing', 'noc', 'selection', 'work', 'conduct', 'certificate', 'interviews', 'general'];
 
 export default function CommunityBoard() {
   const { user } = useAuth();
-  const [questions, setQuestions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('all');
-  const [status, setStatus] = useState('open');
-  const [sort, setSort] = useState('most_voted');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [questions, setQuestions]         = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [page, setPage]                   = useState(1);
+  const [totalPages, setTotalPages]       = useState(1);
+  const [total, setTotal]                 = useState(0);
+  const [isModalOpen, setIsModalOpen]     = useState(false);
+  const [spotlightOnly, setSpotlightOnly] = useState(false);
 
   const fetchQuestions = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page, status, sort });
-      if (category !== 'all') params.append('category', category);
-
+      const params = new URLSearchParams({ page, sort: 'newest', status: 'open' });
       const res = await api.get(`/questions?${params}`);
       setQuestions(res.data.data);
       setTotalPages(res.data.pages);
@@ -36,8 +32,9 @@ export default function CommunityBoard() {
   };
 
   useEffect(() => {
+    document.title = 'Community Board | Samagama';
     fetchQuestions();
-  }, [category, status, sort, page]);
+  }, [page]);
 
   const timeAgo = (date) => {
     const seconds = Math.floor((Date.now() - new Date(date)) / 1000);
@@ -47,79 +44,195 @@ export default function CommunityBoard() {
     return `${Math.floor(seconds / 86400)}d ago`;
   };
 
+  const spotlightedQuestions = questions.filter((q) => q.is_spotlighted);
+  const regularQuestions     = questions.filter((q) => !q.is_spotlighted);
+  const displayedQuestions   = spotlightOnly ? spotlightedQuestions : regularQuestions;
+  const spotlightCount       = spotlightedQuestions.length;
+
   return (
     <div className="page">
       <div className="container">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div>
             <h1 style={{
-              fontSize: '2rem',
-              fontWeight: 800,
+              fontSize: '2rem', fontWeight: 800,
               background: 'var(--gradient-primary)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>
               Community Board
             </h1>
-            <p style={{ color: 'var(--text-secondary)' }}>{total} questions</p>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{total} questions</p>
           </div>
-          <Link to="/faq" className="btn btn-primary btn-sm"><FaBolt style={{ marginRight: '0.4rem' }} /> Ask Yaksha First</Link>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Link to="/faq" className="btn btn-secondary btn-sm">
+              <FaBolt style={{ color: '#FCD34D' }} /> Ask Yaksha First
+            </Link>
+            {user && (
+              <button className="btn btn-primary btn-sm" onClick={() => setIsModalOpen(true)}>
+                Ask Question
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              className={`btn btn-sm ${category === cat ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => { setCategory(cat); setPage(1); }}
-            >
-              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {['open', 'answered', 'all'].map((s) => (
-            <button
-              key={s}
-              className={`btn btn-sm ${status === s ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => { setStatus(s); setPage(1); }}
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-          <span style={{ borderLeft: '1px solid var(--border-color)', margin: '0 0.25rem' }} />
-          {[['most_voted', 'Most Voted'], ['newest', 'Newest']].map(([val, label]) => (
-            <button
-              key={val}
-              className={`btn btn-sm ${sort === val ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => { setSort(val); setPage(1); }}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Single Spotlight toggle */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <style>{`
+            @keyframes spot-pulse {
+              0%   { box-shadow: 0 0 0 0   rgba(251,191,36,0.6), 0 0 14px 2px rgba(251,191,36,0.28); }
+              60%  { box-shadow: 0 0 0 9px rgba(251,191,36,0),   0 0 24px 7px rgba(251,191,36,0.12); }
+              100% { box-shadow: 0 0 0 0   rgba(251,191,36,0),   0 0 14px 2px rgba(251,191,36,0.28); }
+            }
+            @keyframes spot-idle {
+              0%,100% { box-shadow: 0 0 7px 1px rgba(251,191,36,0.22), inset 0 0 0 1.5px rgba(251,191,36,0.45); }
+              50%      { box-shadow: 0 0 18px 5px rgba(251,191,36,0.38), inset 0 0 0 1.5px rgba(251,191,36,0.75); }
+            }
+            #spotlight-toggle {
+              animation: ${spotlightOnly ? 'spot-pulse 1.5s ease-out infinite' : 'spot-idle 2.2s ease-in-out infinite'};
+              transition: transform 0.15s, filter 0.15s, background 0.18s;
+            }
+            #spotlight-toggle:hover { transform: scale(1.05); filter: brightness(1.14); }
+          `}</style>
+          <button
+            id="spotlight-toggle"
+            onClick={() => { setSpotlightOnly((v) => !v); setPage(1); }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.5rem 1.15rem',
+              borderRadius: '999px',
+              border: spotlightOnly
+                ? '1.5px solid rgba(251,191,36,0.9)'
+                : '1.5px solid rgba(251,191,36,0.55)',
+              background: spotlightOnly
+                ? 'linear-gradient(135deg, rgba(251,191,36,0.28), rgba(245,158,11,0.15))'
+                : 'linear-gradient(135deg, rgba(251,191,36,0.1), rgba(245,158,11,0.05))',
+              color: '#FBBF24',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+              textShadow: '0 0 10px rgba(251,191,36,0.55)',
+            }}
+          >
+            <FaBolt style={{
+              color: '#FCD34D',
+              fontSize: '0.82rem',
+              filter: 'drop-shadow(0 0 5px rgba(251,191,36,0.85))',
+            }} />
+            Spotlight
+            {spotlightCount > 0 && (
+              <span style={{
+                background: spotlightOnly ? 'rgba(251,191,36,0.3)' : 'rgba(251,191,36,0.15)',
+                color: '#FDE68A',
+                border: '1px solid rgba(251,191,36,0.5)',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                padding: '0.05rem 0.45rem',
+                marginLeft: '0.1rem',
+                textShadow: 'none',
+              }}>
+                {spotlightCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Questions list */}
         {loading ? (
-          <div className="loading-center"><div className="spinner spinner-lg" /></div>
-        ) : questions.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="skeleton-card">
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <div className="skeleton" style={{ width: '40px', height: '60px', borderRadius: '8px' }} />
+                  <div style={{ flex: 1 }}>
+                    <div className="skeleton skeleton-title" style={{ width: '70%' }} />
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div className="skeleton skeleton-text" style={{ width: '60px' }} />
+                      <div className="skeleton skeleton-text" style={{ width: '60px' }} />
+                      <div className="skeleton skeleton-text" style={{ width: '80px' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : spotlightOnly && spotlightCount === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><FaBolt style={{ color: '#FCD34D' }} /></div>
+            <div className="empty-state-text">No spotlight questions</div>
+            <p style={{ color: 'var(--text-muted)' }}>
+              All open questions have been answered within 2 minutes — great job!
+            </p>
+          </div>
+        ) : displayedQuestions.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon"><FaQuestion /></div>
             <div className="empty-state-text">No questions found</div>
-            <p style={{ color: 'var(--text-muted)' }}>Try a different filter or ask Yaksha first!</p>
+            <p style={{ color: 'var(--text-muted)' }}>Ask Yaksha first or post a question!</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {questions.map((q) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+
+            {/* Spotlight mode banner */}
+            {spotlightOnly && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.5rem 0.85rem',
+                background: 'linear-gradient(135deg, rgba(251,191,36,0.12), rgba(245,158,11,0.06))',
+                border: '1px solid rgba(251,191,36,0.3)',
+                borderRadius: '10px',
+                marginBottom: '0.25rem',
+              }}>
+                <FaBolt style={{ color: '#FCD34D', fontSize: '0.8rem' }} />
+                <span style={{ color: '#FCD34D', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Community Spotlight — Needs Answers
+                </span>
+                <span style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(251,191,36,0.2)', color: '#FBBF24',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  padding: '0.12rem 0.45rem', borderRadius: '999px',
+                  border: '1px solid rgba(251,191,36,0.4)',
+                }}>
+                  {spotlightCount}
+                </span>
+              </div>
+            )}
+
+            {displayedQuestions.map((q) => (
               <Link
                 key={q._id}
                 to={`/faq/community/${q._id}`}
                 style={{ textDecoration: 'none', color: 'inherit' }}
               >
-                <div className="card" style={{ cursor: 'pointer' }}>
+                <div
+                  className="card"
+                  style={{
+                    cursor: 'pointer',
+                    ...(q.is_spotlighted ? {
+                      border: '1px solid rgba(251,191,36,0.45)',
+                      boxShadow: '0 0 0 1px rgba(251,191,36,0.12), 0 2px 14px rgba(251,191,36,0.07)',
+                      position: 'relative',
+                      overflow: 'visible',
+                    } : {}),
+                  }}
+                >
+                  {/* Pulse dot for spotlighted */}
+                  {q.is_spotlighted && (
+                    <span style={{
+                      position: 'absolute', top: '-4px', right: '-4px',
+                      width: '9px', height: '9px', borderRadius: '50%',
+                      background: '#FCD34D',
+                      boxShadow: '0 0 0 3px rgba(252,211,77,0.25)',
+                      animation: 'pulse 2s infinite',
+                    }} />
+                  )}
+
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
                     <div onClick={(e) => e.preventDefault()} style={{ flexShrink: 0 }}>
                       <VoteButtons
@@ -129,6 +242,14 @@ export default function CommunityBoard() {
                       />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
+                      {q.is_spotlighted && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                          <FaBolt style={{ color: '#FCD34D', fontSize: '0.7rem' }} />
+                          <span style={{ color: '#FCD34D', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em' }}>
+                            SPOTLIGHT
+                          </span>
+                        </div>
+                      )}
                       <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
                         {q.rephrased_query}
                       </h3>
@@ -143,7 +264,11 @@ export default function CommunityBoard() {
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                           <FaEye style={{ marginRight: '0.2rem' }} /> {q.view_count} views
                         </span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        <span style={{
+                          color: q.is_spotlighted ? '#FBBF24' : 'var(--text-muted)',
+                          fontSize: '0.8rem',
+                          fontWeight: q.is_spotlighted ? 600 : 400,
+                        }}>
                           {timeAgo(q.created_at)}
                         </span>
                       </div>
@@ -160,8 +285,8 @@ export default function CommunityBoard() {
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
+        {/* Pagination — hidden in spotlight mode */}
+        {!spotlightOnly && totalPages > 1 && (
           <div className="pagination">
             <button
               className="pagination-btn"
@@ -188,6 +313,12 @@ export default function CommunityBoard() {
             </button>
           </div>
         )}
+
+        <AskQuestionModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onQuestionPosted={() => fetchQuestions()}
+        />
       </div>
     </div>
   );

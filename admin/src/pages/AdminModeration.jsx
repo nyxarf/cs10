@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  adminGetModeration, adminApproveSubmission, adminRejectSubmission, adminPromoteSubmission
+  adminGetModeration, adminApproveSubmission, adminRejectSubmission, adminPromoteSubmission, adminAutoModerate,
+  adminGetPendingQuestions, adminApproveQuestion, adminRejectQuestion
 } from '../services/api';
 import {
   LuShieldCheck, LuCircleCheck, LuCircleX, LuRefreshCw,
@@ -31,10 +32,13 @@ function TabBtn({ active, onClick, children, count }) {
 
 export default function AdminModeration() {
   const [flagged, setFlagged] = useState([]);
+  const [pendingQuestions, setPendingQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [xpSettings, setXpSettings] = useState({});
   const [actionLoading, setActionLoading] = useState(null);
+  const [isAutoModerating, setIsAutoModerating] = useState(false);
+  const [activeTab, setActiveTab] = useState('answers'); // 'answers' | 'questions'
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -44,8 +48,12 @@ export default function AdminModeration() {
   const load = async () => {
     setLoading(true);
     try {
-      const f = await adminGetModeration();
+      const [f, q] = await Promise.all([
+        adminGetModeration(),
+        adminGetPendingQuestions()
+      ]);
       setFlagged(f.data || []);
+      setPendingQuestions(q.data || []);
     } catch (err) {
       showToast('Failed to load moderation queue', 'error');
     } finally {
@@ -66,6 +74,21 @@ export default function AdminModeration() {
       showToast(err.response?.data?.error || 'Failed to approve', 'error');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleAutoModerate = async () => {
+    if (!window.confirm('Are you sure you want to let the AI evaluate and apply rewards to ALL pending answers?')) return;
+    setIsAutoModerating(true);
+    showToast('Auto-Moderation started... please wait.', 'success');
+    try {
+      const res = await adminAutoModerate();
+      showToast(res.message);
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to auto-moderate', 'error');
+    } finally {
+      setIsAutoModerating(false);
     }
   };
 
@@ -96,6 +119,33 @@ export default function AdminModeration() {
     }
   };
 
+  const handleApproveQuestion = async (id) => {
+    setActionLoading(id);
+    try {
+      const xp = xpSettings[id] || { askerXp: 15 };
+      await adminApproveQuestion(id, { askerXp: xp.askerXp });
+      showToast('Question approved and published!');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to approve question', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectQuestion = async (id) => {
+    setActionLoading(id);
+    try {
+      await adminRejectQuestion(id);
+      showToast('Question rejected and hidden.');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to reject question', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div>
       {toast && (
@@ -111,15 +161,29 @@ export default function AdminModeration() {
           <h1>Moderation</h1>
           <p>Review flagged community answers requiring admin review</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <LuRefreshCw size={14} /> Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className="btn btn-primary btn-sm" 
+            onClick={handleAutoModerate} 
+            disabled={isAutoModerating || flagged.length === 0}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            {isAutoModerating ? <LuRefreshCw className="spin" size={14} /> : <LuShieldCheck size={14} />} 
+            {isAutoModerating ? 'Processing...' : 'Auto-Moderate All'}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <LuRefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Tabs - only Flagged Answers */}
+      {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 6, width: 'fit-content', boxShadow: 'var(--shadow-sm)' }}>
-        <TabBtn active={true} onClick={() => {}} count={flagged.length}>
+        <TabBtn active={activeTab === 'answers'} onClick={() => setActiveTab('answers')} count={flagged.length}>
           <LuFlag size={15} /> Flagged Answers
+        </TabBtn>
+        <TabBtn active={activeTab === 'questions'} onClick={() => setActiveTab('questions')} count={pendingQuestions.length}>
+          <LuTriangleAlert size={15} /> Pending Questions
         </TabBtn>
       </div>
 
@@ -127,16 +191,17 @@ export default function AdminModeration() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 180 }} />)}
         </div>
-      ) : flagged.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon"><LuShieldCheck size={24} style={{ color: 'var(--success)' }} /></div>
-            <h3>All clear!</h3>
-            <p>No pending flagged answers to review.</p>
+      ) : activeTab === 'answers' ? (
+        flagged.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-state-icon"><LuShieldCheck size={24} style={{ color: 'var(--success)' }} /></div>
+              <h3>All clear!</h3>
+              <p>No pending flagged answers to review.</p>
+            </div>
           </div>
-        </div>
-      ) : (
-        flagged.map(a => {
+        ) : (
+          flagged.map(a => {
           const xp = xpSettings[a._id] || { answererXp: 25, askerXp: 15 };
           const setXp = (key, val) => setXpSettings(p => ({ ...p, [a._id]: { ...xp, [key]: Number(val) } }));
           const busy = actionLoading === a._id;
@@ -145,7 +210,7 @@ export default function AdminModeration() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span className="badge badge-primary">{a.question_id?.category || 'general'}</span>
-                  {a.flag_reason && <span className="badge badge-danger">⚠️ {a.flag_reason}</span>}
+                  {a.flag_reason && <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><LuTriangleAlert size={11} /> {a.flag_reason}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -210,7 +275,71 @@ export default function AdminModeration() {
             </div>
           );
         })
-      )}
+      )) : (
+        pendingQuestions.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-state-icon"><LuShieldCheck size={24} style={{ color: 'var(--success)' }} /></div>
+              <h3>All clear!</h3>
+              <p>No pending questions to review.</p>
+            </div>
+          </div>
+        ) : (
+          pendingQuestions.map(q => {
+          const xp = xpSettings[q._id] || { askerXp: 15 };
+          const setXp = (key, val) => setXpSettings(p => ({ ...p, [q._id]: { ...xp, [key]: Number(val) } }));
+          const busy = actionLoading === q._id;
+          return (
+            <div key={q._id} className="card fade-in" style={{ padding: '24px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span className="badge badge-primary">{q.category || 'general'}</span>
+                  <span className="badge badge-warning">Needs Review</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <LuUser size={12} /> {q.posted_by?.name || 'Anonymous'}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <LuCalendar size={12} /> {new Date(q.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>ORIGINAL QUERY</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-2)' }}>{q.original_query}</p>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>REPHRASED BY AI</p>
+                <div style={{ background: 'var(--surface-2)', padding: 16, borderRadius: 8, borderLeft: '3px solid var(--primary)' }}>
+                  <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>{q.rephrased_query}</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, marginBottom: 20, background: 'var(--surface-2)', padding: 16, borderRadius: 8 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.85rem' }}>
+                    <span style={{ fontWeight: 600 }}>Asker Reward (if approved)</span>
+                    <span style={{ color: 'var(--success)', fontWeight: 700 }}>{xp.askerXp} SP</span>
+                  </div>
+                  <input type="range" min="0" max="100" step="5" value={xp.askerXp} onChange={e => setXp('askerXp', e.target.value)} style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button className="btn btn-danger" disabled={busy} onClick={() => handleRejectQuestion(q._id)}>
+                  <LuCircleX size={15} style={{ marginRight: 4 }} /> Reject & Hide
+                </button>
+                <button className="btn btn-secondary" disabled={busy} onClick={() => handleApproveQuestion(q._id)}>
+                  <LuCircleCheck size={15} style={{ marginRight: 4 }} /> Approve & Publish
+                </button>
+              </div>
+            </div>
+          );
+        })
+      ))}
     </div>
   );
 }

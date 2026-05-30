@@ -10,6 +10,36 @@ const apiKey = process.env.GROQ_API_KEY || 'gsk_Pk5brXVzKLFa3fUkRo3WWGdyb3FYaciJ
 const groq = new Groq({ apiKey });
 const MODEL = 'llama-3.1-8b-instant';
 
+import GroqLog from '../models/GroqLog.js';
+
+async function executeGroqCall(actionName, options, customClient = groq) {
+  try {
+    const completion = await customClient.chat.completions.create(options);
+    
+    GroqLog.create({
+      action: actionName,
+      model: options.model,
+      prompt_summary: typeof options.messages.slice(-1)[0]?.content === 'string' 
+        ? options.messages.slice(-1)[0].content.substring(0, 200) 
+        : 'Complex prompt',
+      response_summary: (completion.choices[0]?.message?.content || '').substring(0, 200),
+      tokens_prompt: completion.usage?.prompt_tokens || 0,
+      tokens_completion: completion.usage?.completion_tokens || 0,
+      tokens_total: completion.usage?.total_tokens || 0,
+    }).catch(err => console.error('Failed to log Groq:', err.message));
+
+    return completion;
+  } catch (error) {
+    GroqLog.create({
+      action: actionName,
+      model: options.model,
+      prompt_summary: 'ERROR',
+      response_summary: error.message,
+    }).catch(() => {});
+    throw error;
+  }
+}
+
 /**
  * Safe JSON parse with fallback
  */
@@ -116,7 +146,7 @@ export function parseYakshaResponse(text) {
  */
 export async function classifyQuery(query) {
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await executeGroqCall('classifyQuery', {
       model: MODEL,
       temperature: 0,
       max_tokens: 150,
@@ -160,6 +190,54 @@ Respond ONLY as valid JSON with no extra text:
 }
 
 /**
+ * 2-Step Community Posting Filter:
+ * Routes a new community question into one of three buckets based on relevance/quality:
+ * - publish: clear, on-topic, useful
+ * - review: unclear or borderline
+ * - hide: low-value, repeated, off-topic, spammy
+ */
+export async function classifyForPosting(query) {
+  try {
+    const completion = await executeGroqCall('classifyForPosting', {
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 150,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a moderation AI for a college/internship FAQ community board (Samagama).
+Given a user's question, route it into one of three buckets:
+1. "publish" : For clear, on-topic, and useful questions.
+2. "review" : For unclear, borderline, or poorly phrased questions.
+3. "hide" : For low-value, gibberish, abusive, spammy, or completely off-topic posts.
+
+Respond ONLY as valid JSON:
+{"action":"publish", "reason":""}`
+        },
+        {
+          role: 'user',
+          content: query,
+        },
+      ],
+    });
+
+    const result = safeParseJSON(
+      completion.choices[0]?.message?.content || '',
+      { action: 'review', reason: 'Failed to parse classification' }
+    );
+
+    const validActions = ['publish', 'review', 'hide'];
+    const action = validActions.includes(result.action) ? result.action : 'review';
+
+    return { action, reason: result.reason || '' };
+  } catch (error) {
+    console.error('⚠️ Groq classifyForPosting error:', error.message);
+    // Default to review on failure
+    return { action: 'review', reason: 'API error' };
+  }
+}
+
+/**
  * US-006: Synthesize a natural language answer from FAQ snippets.
  * Returns answer + sentiment classification.
  */
@@ -176,7 +254,7 @@ export async function condenseQuery(query, history = []) {
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n');
 
-    const completion = await groq.chat.completions.create({
+    const completion = await executeGroqCall('condenseQuery', {
       model: MODEL,
       temperature: 0,
       max_tokens: 150,
@@ -261,7 +339,7 @@ Respond ONLY as valid JSON. Ensure double quotes inside the answer text are esca
       content: query
     });
 
-    const completion = await groq.chat.completions.create({
+    const completion = await executeGroqCall('synthesizeAnswer', {
       model: MODEL,
       temperature: 0,
       max_tokens: 800,
@@ -285,7 +363,7 @@ Respond ONLY as valid JSON. Ensure double quotes inside the answer text are esca
  */
 export async function checkAnswer(question, answer) {
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await executeGroqCall('checkAnswer', {
       model: MODEL,
       temperature: 0,
       max_tokens: 100,
@@ -332,7 +410,7 @@ or
  */
 export async function rephraseQuery(query) {
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await executeGroqCall('rephraseQuery', {
       model: MODEL,
       temperature: 0,
       max_tokens: 200,
@@ -382,7 +460,7 @@ export async function clusterQuestions(questionsData, customApiKey) {
   const client = customApiKey ? new Groq({ apiKey: customApiKey }) : groq;
   
   try {
-    const completion = await client.chat.completions.create({
+    const completion = await executeGroqCall('clusterQuestions', {
       model: MODEL,
       temperature: 0,
       max_tokens: 4000, // Boosted to allow for large output structures
@@ -419,7 +497,7 @@ DO NOT wrap your response in markdown blocks like \`\`\`json. ONLY output the ra
           content: JSON.stringify(questionsData)
         }
       ]
-    });
+    }, client);
 
     const rawContent = completion.choices[0]?.message?.content || '';
     
@@ -435,5 +513,93 @@ DO NOT wrap your response in markdown blocks like \`\`\`json. ONLY output the ra
   } catch (error) {
     console.error('⚠️ Groq clusterQuestions error:', error.message);
     return { proposals: [] };
+  }
+}
+
+/**
+ * Validate if a question matches the user-selected category.
+ */
+export async function validateCategory(question, category) {
+  try {
+    const completion = await executeGroqCall('validateCategory', {
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 150,
+      messages: [
+        {
+          role: 'system',
+          content: `You are an AI for Samagama verifying if a question matches a selected category.
+Category: "${category}"
+If the question is even slightly related to the category, return true.
+If the question is completely irrelevant to the chosen category, return false.
+
+Respond ONLY as valid JSON:
+{"matches": true, "reason": ""}`
+        },
+        {
+          role: 'user',
+          content: `Question: ${question}`,
+        },
+      ],
+    });
+
+    const result = safeParseJSON(
+      completion.choices[0]?.message?.content || '',
+      { matches: true }
+    );
+    return { matches: result.matches !== false };
+  } catch (error) {
+    console.error('⚠️ Groq validateCategory error:', error.message);
+    return { matches: true }; // Fail open
+  }
+}
+
+/**
+ * Evaluates a community answer's quality and relevance to assign an SP reward.
+ * Used by the Auto-Moderation queue.
+ */
+export async function evaluateAnswerReward(question, answer) {
+  try {
+    const completion = await executeGroqCall('evaluateAnswerReward', {
+      model: MODEL,
+      temperature: 0.1,
+      max_tokens: 200,
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert AI moderator for the Samagama community.
+Your job is to read a user's question and another user's answer, and judge the answer's quality.
+
+Rules for rewards:
+- If the answer is extremely detailed, helpful, and completely solves the question: give 15 SP, action "approve"
+- If the answer is solid, correct, but standard: give 10 SP, action "approve"
+- If the answer is barely acceptable, very brief, or low effort but not wrong: give 5 SP, action "approve"
+- If the answer is irrelevant, spam, completely wrong, or harmful: give 0 SP, action "reject"
+
+Asker reward:
+- Give the asker 15 SP if the question is well-phrased. Otherwise 5 SP.
+
+Respond ONLY as valid JSON:
+{"action": "approve" | "reject", "answererXp": number, "askerXp": number, "reason": "short explanation"}`
+        },
+        {
+          role: 'user',
+          content: `Question: ${question}\n\nAnswer: ${answer}`,
+        },
+      ],
+    });
+
+    const defaultResult = { action: 'approve', answererXp: 10, askerXp: 10, reason: 'Default fallback' };
+    const result = safeParseJSON(completion.choices[0]?.message?.content || '', defaultResult);
+    
+    // Safety bounds
+    if (result.action !== 'reject') result.action = 'approve';
+    result.answererXp = Math.min(Math.max(result.answererXp || 0, 0), 15);
+    result.askerXp = Math.min(Math.max(result.askerXp || 0, 0), 15);
+    
+    return result;
+  } catch (error) {
+    console.error('⚠️ Groq evaluateAnswerReward error:', error.message);
+    return { action: 'approve', answererXp: 5, askerXp: 5, reason: 'Error evaluating' };
   }
 }

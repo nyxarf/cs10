@@ -3,9 +3,27 @@ import Answer from '../models/Answer.js';
 import Vote from '../models/Vote.js';
 import User from '../models/User.js';
 import FAQ from '../models/FAQ.js';
-import { rephraseQuery } from './groq.js';
+import { rephraseQuery, classifyForPosting } from './groq.js';
 import { getEmbedding } from './embeddingService.js';
 import AppError from '../utils/appError.js';
+
+/** Threshold in ms after which an open, unanswered question is spotlighted. */
+const SPOTLIGHT_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * Returns true when a question should be highlighted in the Community Spotlight.
+ * Criteria: status is 'open', answer_count is 0, and posted more than 2 minutes ago.
+ *
+ * @param {Object} q - Question document (plain object or Mongoose doc)
+ * @returns {boolean}
+ */
+const isSpotlighted = (q) => {
+  return (
+    q.status === 'open' &&
+    (q.answer_count || 0) === 0 &&
+    (Date.now() - new Date(q.created_at).getTime()) > SPOTLIGHT_THRESHOLD_MS
+  );
+};
 
 /**
  * Service managing community questions, duplicate checking, and votes.
@@ -92,12 +110,19 @@ class QuestionService {
       };
     }
 
-    // 3. Create the question
+    // 3. AI Moderation (2-Step Filter)
+    const classification = await classifyForPosting(original_query);
+    let status = 'open';
+    if (classification.action === 'review') status = 'review';
+    if (classification.action === 'hide') status = 'hidden';
+
+    // 4. Create the question
     const question = await Question.create({
       original_query: original_query.trim(),
       rephrased_query: rephrasedClean,
       category: category.toLowerCase().trim(),
       posted_by: userId,
+      status: status,
     });
 
     // 4. Increment user's question count
@@ -131,7 +156,67 @@ class QuestionService {
       case 'most_answers': sortOptions.answer_count = -1; break;
       case 'most_viewed': sortOptions.view_count = -1; break;
       case 'most_voted': sortOptions.net_score = -1; break;
+      case 'hybrid': break; // Handled separately
       default: sortOptions.created_at = -1; // newest
+    }
+
+    if (sort === 'hybrid') {
+      const pipeline = [
+        { $match: filter },
+        {
+          $addFields: {
+            ageInDays: { $divide: [{ $subtract: [new Date(), "$created_at"] }, 1000 * 60 * 60 * 24] },
+            priorityScore: { $ifNull: ["$priority", 0] },
+            searchScore: { $ifNull: ["$search_frequency", 0] },
+            engagementScore: { $ifNull: ["$engagement_time", 0] },
+            baseNet: { $ifNull: ["$net_score", 0] }
+          }
+        },
+        {
+          $addFields: {
+            // max 10 points for recency, drops off by 1 point each day
+            recencyScore: { $max: [0, { $subtract: [10, "$ageInDays"] }] }
+          }
+        },
+        {
+          $addFields: {
+            // Final Score = (Upvotes × 0.4) + (Search Frequency × 0.2) + (Recency × 0.15) + (Admin Priority × 0.15) + (User Engagement Time × 0.1)
+            // Note: Since engagement time is in seconds and can be huge, we cap it at 300 seconds for scoring purposes to avoid it dominating the score.
+            cappedEngagement: { $min: ["$engagementScore", 300] },
+            hybrid_score: {
+              $add: [
+                { $multiply: ["$baseNet", 0.4] },
+                { $multiply: ["$searchScore", 0.2] },
+                { $multiply: ["$recencyScore", 0.15] },
+                { $multiply: ["$priorityScore", 0.15] },
+                { $multiply: ["$cappedEngagement", 0.1] }
+              ]
+            }
+          }
+        },
+        { $sort: { hybrid_score: -1, created_at: -1 } },
+        { $skip: skip },
+        { $limit: limitNum }
+      ];
+
+      const [questions, total] = await Promise.all([
+        Question.aggregate(pipeline),
+        Question.countDocuments(filter),
+      ]);
+
+      await User.populate(questions, { path: 'posted_by', select: 'name' });
+
+      // Attach spotlight flag and sort spotlighted questions first
+      const withSpotlight = questions.map((q) => ({ ...q, is_spotlighted: isSpotlighted(q) }));
+      const spotlighted = withSpotlight.filter((q) => q.is_spotlighted);
+      const regular = withSpotlight.filter((q) => !q.is_spotlighted);
+
+      return {
+        data: [...spotlighted, ...regular],
+        total,
+        page: pageNum,
+        pages: Math.ceil(total / limitNum),
+      };
     }
 
     const [questions, total] = await Promise.all([
@@ -144,8 +229,13 @@ class QuestionService {
       Question.countDocuments(filter),
     ]);
 
+    // Attach spotlight flag and sort spotlighted questions first
+    const withSpotlight = questions.map((q) => ({ ...q, is_spotlighted: isSpotlighted(q) }));
+    const spotlighted = withSpotlight.filter((q) => q.is_spotlighted);
+    const regular = withSpotlight.filter((q) => !q.is_spotlighted);
+
     return {
-      data: questions,
+      data: [...spotlighted, ...regular],
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
@@ -239,6 +329,20 @@ class QuestionService {
       net_score: updatedQuestion.net_score,
       message: 'Vote recorded',
     };
+  }
+
+  /**
+   * Increments the engagement time for a question
+   */
+  async addEngagementTime(id, timeSeconds) {
+    await Question.findByIdAndUpdate(id, { $inc: { engagement_time: timeSeconds } });
+  }
+
+  /**
+   * Increments the search frequency hit for a question
+   */
+  async addSearchHit(id) {
+    await Question.findByIdAndUpdate(id, { $inc: { search_frequency: 1 } });
   }
 }
 

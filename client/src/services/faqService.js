@@ -21,6 +21,15 @@ class FAQService {
   }
 
   /**
+   * Submit helpful/unhelpful feedback for analytics.
+   */
+  async submitFeedback(cacheId, helpful) {
+    if (!cacheId) return;
+    const response = await apiClient.post('/search/feedback', { cacheId, helpful });
+    return response.data;
+  }
+
+  /**
    * Retrieves FAQ entries grouped by section.
    */
   async listFaqs({ section, search } = {}) {

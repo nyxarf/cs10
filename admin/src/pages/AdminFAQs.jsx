@@ -129,7 +129,7 @@ export default function AdminFAQs() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (dupeWarning) {
-      if (!window.confirm(`⚠️ Duplicate Warning!\n\n${dupeWarning}\n\nAre you sure you want to save this FAQ anyway?`)) return;
+      if (!window.confirm(`Duplicate Warning!\n\n${dupeWarning}\n\nAre you sure you want to save this FAQ anyway?`)) return;
     }
     setSaving(true);
     const body = {
@@ -242,8 +242,8 @@ export default function AdminFAQs() {
                   }}>
                     <LuCopy size={15} style={{ color: 'var(--warning, #f59e0b)', flexShrink: 0, marginTop: 1 }} />
                     <div>
-                      <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--warning, #b45309)', marginBottom: 2 }}>
-                        ⚠️ Possible Duplicate Detected
+                      <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--warning, #b45309)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <LuTriangleAlert size={13} /> Possible Duplicate Detected
                       </p>
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>{dupeWarning}</p>
                     </div>

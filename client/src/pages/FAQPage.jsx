@@ -93,7 +93,7 @@ export default function FAQPage() {
         chatHistory.slice(0, -1) // pass all previous turns except the latest one we just appended
       );
 
-      const { answer, sentiment, source, escalate } = askData;
+      const { answer, sentiment, source, escalate, cacheId } = askData;
 
       // 5. Append Yaksha response
       setMessages(prev => [
@@ -104,7 +104,8 @@ export default function FAQPage() {
           text: answer,
           sentiment,
           source,
-          escalate
+          escalate,
+          cacheId
         }
       ]);
 
@@ -147,10 +148,46 @@ export default function FAQPage() {
     }
   };
 
-  const handleFeedback = (id, helpful) => {
+  const handleFeedback = async (id, cacheId, helpful) => {
     setMessages(prev =>
       prev.map(m => (m.id === id ? { ...m, feedbackSubmitted: true, wasHelpful: helpful } : m))
     );
+    try {
+      if (cacheId) {
+        await faqService.submitFeedback(cacheId, helpful);
+      }
+    } catch (err) {
+      console.error('Failed to submit feedback');
+    }
+  };
+
+  const [isListening, setIsListening] = useState(false);
+
+  const startVoiceSearch = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Your browser does not support voice input.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsListening(true);
+    
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => prev ? prev + ' ' + transcript : transcript);
+    };
+    
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+    
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.start();
   };
 
   // Custom rich-text Markdown renderer inside the chat
@@ -450,7 +487,7 @@ export default function FAQPage() {
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                               <button
                                 className="btn btn-sm btn-success"
-                                onClick={() => handleFeedback(m.id, true)}
+                                onClick={() => handleFeedback(m.id, m.cacheId, true)}
                                 style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}
                               >
                                 <FaThumbsUp style={{ marginRight: '0.2rem' }} /> Yes
@@ -458,7 +495,7 @@ export default function FAQPage() {
                               <button
                                 className="btn btn-sm btn-secondary"
                                 onClick={() => {
-                                  handleFeedback(m.id, false);
+                                  handleFeedback(m.id, m.cacheId, false);
                                   handleNotHelpful(messages.filter(msg => msg.sender === 'user').slice(-1)[0]?.text || m.text);
                                 }}
                                 style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
@@ -521,6 +558,20 @@ export default function FAQPage() {
                     }
                   }}
                 />
+                <button 
+                  type="button"
+                  className={`btn ${isListening ? 'btn-danger' : 'btn-secondary'}`}
+                  onClick={startVoiceSearch}
+                  title={isListening ? "Listening..." : "Dictate your question"}
+                  style={{
+                    padding: '0 1rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  🎤
+                </button>
                 <button
                   type="submit"
                   className="btn btn-primary"

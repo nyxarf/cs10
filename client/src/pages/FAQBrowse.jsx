@@ -1,38 +1,80 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import faqService from '../services/faqService';
-
-// Canonical 14 categories in display order with descriptions for tooltips
-export const CANONICAL_CATEGORIES = [
-  { id: 'about',      label: 'About the Internship',  description: 'Program overview, eligibility, selection, and opt-in process'     },
-  { id: 'noc',        label: 'NOC',                    description: 'No Objection Certificate — signing, format, submission, verification' },
-  { id: 'certificate',label: 'Certificate',             description: 'E-certificate, academic credit, university grades, resume usage'      },
-  { id: 'rosetta',    label: 'Rosetta',                 description: 'Daily journal, thinking routines, AI usage policy, submission'       },
-  { id: 'teams',      label: 'Teams',                   description: 'Team formation, size, member conflicts, WhatsApp groups'             },
-  { id: 'projects',   label: 'Projects',                description: 'Phase 2–4 projects, mentor assignment, Bronze/Silver/Gold tiers'     },
-  { id: 'vibe',       label: 'ViBe platform',           description: 'ViBe learning platform, video issues, bypass exam, coursework'       },
-  { id: 'offer',      label: 'Offer letter',            description: 'Offer acceptance phrasing, appeals, deferring dates, deadlines'      },
-  { id: 'yaksha',     label: 'Yaksha',                  description: 'Yaksha AI chatbot, asking questions, tags, escalation'             },
-  { id: 'support',    label: 'Support channels',        description: 'WhatsApp groups, email support, escalation, response time'         },
-  { id: 'completion', label: 'Completion',              description: 'Finishing the internship, dropping out mid-way, final submissions' },
-  { id: 'policies',   label: 'Policies',                description: 'Attendance, leave, mandatory sessions, working hours, termination'  },
-  { id: 'mentor',     label: 'Mentor',                  description: 'Mentor assignment, contact, responsibilities in each phase'        },
-  { id: 'timeline',   label: 'Timeline',                description: 'Start/end dates, kickoff orientation, Zoom link, absolute deadlines' },
-];
-
-const CANONICAL_ORDER = CANONICAL_CATEGORIES.map(c => c.id);
+import { FaBook, FaBolt, FaSearch, FaCommentDots, FaMicrophone, FaHistory, FaChevronRight } from 'react-icons/fa';
 
 export default function FAQBrowse() {
   const [faqData, setFaqData] = useState({});
   const [sections, setSections] = useState([]);
   const [activeSection, setActiveSection] = useState(null);
-  const [hoveredTab, setHoveredTab] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+
+  const startVoiceSearch = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Your browser does not support voice search.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsListening(true);
+    
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      handleSearchSubmit(transcript);
+    };
+    
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+    
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.start();
+  };
+
+  // Load recent searches
+  useEffect(() => {
+    const saved = localStorage.getItem('samagama_recent_searches');
+    if (saved) setRecentSearches(JSON.parse(saved));
+  }, []);
+
+  const handleSearchSubmit = (query) => {
+    if (!query.trim()) return;
+    const updated = [query, ...recentSearches.filter(s => s.toLowerCase() !== query.toLowerCase())].slice(0, 5);
+    setRecentSearches(updated);
+    localStorage.setItem('samagama_recent_searches', JSON.stringify(updated));
+    setShowSearchDropdown(false);
+  };
+
+  // Sync search query to URL with debounce
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchQuery) {
+        setSearchParams({ q: searchQuery });
+        if (searchQuery.length > 2) {
+          handleSearchSubmit(searchQuery);
+        }
+      } else {
+        setSearchParams({});
+      }
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery, setSearchParams]);
 
   useEffect(() => {
+    document.title = "Browse FAQs | Samagama";
     const fetchData = async () => {
       try {
         const [faqDataResult, secDataResult] = await Promise.all([
@@ -50,6 +92,19 @@ export default function FAQBrowse() {
     };
     fetchData();
   }, []);
+
+  const highlightText = (text, highlight) => {
+    if (!highlight || !highlight.trim()) return text;
+    const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+    return (
+      <span>
+        {parts.map((part, i) => 
+          part.toLowerCase() === highlight.toLowerCase() ? 
+            <mark key={i} style={{ backgroundColor: 'var(--accent-primary)', color: '#fff', padding: '0 2px', borderRadius: '2px' }}>{part}</mark> : part
+        )}
+      </span>
+    );
+  };
 
   const toggleExpand = (id) => {
     setExpandedIds((prev) => {
@@ -99,31 +154,31 @@ export default function FAQBrowse() {
     0
   );
 
-  // Build a lookup map of sectionId → canonical category info (for all 14 tabs)
-  const canonicalLookup = useMemo(() => {
-    const map = {};
-    for (const cat of CANONICAL_CATEGORIES) {
-      map[cat.id] = cat;
-    }
-    return map;
-  }, []);
-
-  // Merge API section counts with canonical tabs (ensures all 14 show even if 0 FAQs)
-  const displayTabs = useMemo(() => {
-    const countMap = {};
-    for (const sec of sections) countMap[sec.id] = sec.count;
-
-    return CANONICAL_CATEGORIES.map(cat => ({
-      ...cat,
-      count: countMap[cat.id] || 0,
-    }));
-  }, [sections]);
-
   if (loading) {
     return (
       <div className="page">
-        <div className="container loading-center">
-          <div className="spinner spinner-lg" />
+        <div className="container">
+          <div className="skeleton skeleton-title" style={{ height: '2.5rem', width: '30%', marginBottom: '0.5rem' }}></div>
+          <div className="skeleton skeleton-text" style={{ width: '40%', marginBottom: '2rem' }}></div>
+          
+          <div className="skeleton" style={{ height: '3rem', width: '100%', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem' }}></div>
+          
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton" style={{ height: '2rem', width: '80px', borderRadius: '100px' }}></div>
+            ))}
+          </div>
+
+          {[1, 2].map(section => (
+            <div key={section} style={{ marginBottom: '2rem' }}>
+              <div className="skeleton skeleton-title" style={{ width: '20%' }}></div>
+              {[1, 2, 3].map(item => (
+                <div key={item} className="skeleton-card" style={{ padding: '1rem' }}>
+                  <div className="skeleton skeleton-text" style={{ width: '80%', margin: 0 }}></div>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -167,6 +222,33 @@ export default function FAQBrowse() {
         }
         .faq-search-input::placeholder {
           color: var(--text-muted);
+        }
+        .faq-mic-btn {
+          position: absolute;
+          right: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          font-size: 1.1rem;
+          padding: 4px;
+          border-radius: 50%;
+          transition: all 0.2s;
+        }
+        .faq-mic-btn:hover {
+          color: var(--accent-primary);
+          background: rgba(99, 102, 241, 0.1);
+        }
+        .faq-mic-btn.listening {
+          color: #ef4444;
+          animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
         .faq-section-tabs {
           display: flex;
@@ -226,35 +308,9 @@ export default function FAQBrowse() {
         .faq-tab.active .faq-tab-count {
           background: rgba(255,255,255,0.25);
         }
-        .faq-tab-empty {
-          opacity: 0.55;
-        }
-        .faq-tab-tooltip {
-          position: absolute;
-          bottom: calc(100% + 8px);
-          left: 50%;
-          transform: translateX(-50%);
-          background: var(--bg-card);
-          border: 1px solid var(--border-active);
-          border-radius: var(--radius-sm);
-          padding: 0.5rem 0.75rem;
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          white-space: nowrap;
-          max-width: 280px;
-          white-space: normal;
-          z-index: 100;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-          pointer-events: none;
-        }
-        .faq-section-tabs {
-          position: relative;
         .faq-section-group {
           margin-bottom: 2rem;
           animation: slideUp var(--transition-slow) ease forwards;
-        }
-        .faq-section-group[data-empty] {
-          display: none;
         }
         .faq-section-title {
           display: flex;
@@ -375,25 +431,63 @@ export default function FAQBrowse() {
                 backgroundClip: 'text',
                 marginBottom: '0.25rem',
               }}>
-                📚 Browse FAQs
+                <FaBook style={{ WebkitTextFillColor: 'var(--accent-primary)', marginRight: '0.5rem', verticalAlign: 'middle' }} />Browse FAQs
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
                 {total} frequently asked questions across {sections.length} categories
               </p>
             </div>
-            <Link to="/faq" className="btn btn-primary btn-sm">⚡ Ask Yaksha</Link>
+            <Link to="/faq" className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FaBolt /> Ask Yaksha</Link>
           </div>
 
           {/* Search */}
-          <div className="faq-search-wrapper">
-            <span className="faq-search-icon">🔍</span>
+          <div className="faq-search-wrapper" style={{ position: 'relative' }}>
+            <span className="faq-search-icon"><FaSearch /></span>
             <input
               type="text"
               className="faq-search-input"
               placeholder="Search FAQs by keyword..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSearchDropdown(true);
+              }}
+              onFocus={() => setShowSearchDropdown(true)}
+              onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearchSubmit(searchQuery);
+              }}
             />
+            <button 
+              className={`faq-mic-btn ${isListening ? 'listening' : ''}`}
+              onClick={startVoiceSearch}
+              title={isListening ? "Listening..." : "Search by Voice"}
+            >
+              <FaMicrophone />
+            </button>
+            {showSearchDropdown && recentSearches.length > 0 && (
+              <div className="card fade-in" style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '0.5rem',
+                padding: '0.5rem 0', zIndex: 10, border: '1px solid var(--border-color)',
+                boxShadow: 'var(--shadow-md)'
+              }}>
+                <div style={{ padding: '0.25rem 1rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Recent Searches</div>
+                {recentSearches.map(rs => (
+                  <div 
+                    key={rs} 
+                    style={{ padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}
+                    onMouseOver={e => e.currentTarget.style.background = 'var(--bg-glass-hover)'}
+                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                    onClick={() => {
+                      setSearchQuery(rs);
+                      setShowSearchDropdown(false);
+                    }}
+                  >
+                    <FaHistory style={{ fontSize: '0.75rem', opacity: 0.6 }} /> {rs}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Section Tabs */}
@@ -405,24 +499,16 @@ export default function FAQBrowse() {
               All
               <span className="faq-tab-count">{total}</span>
             </button>
-            {displayTabs.map((tab) => (
+            {sections.map((sec) => (
               <button
-                key={tab.id}
-                className={`faq-tab ${activeSection === tab.id ? 'active' : ''} ${tab.count === 0 ? 'faq-tab-empty' : ''}`}
-                onClick={() => setActiveSection(activeSection === tab.id ? null : tab.id)}
-                onMouseEnter={() => setHoveredTab(tab.id)}
-                onMouseLeave={() => setHoveredTab(null)}
-                title={tab.description}
+                key={sec.id}
+                className={`faq-tab ${activeSection === sec.id ? 'active' : ''}`}
+                onClick={() => setActiveSection(sec.id)}
               >
-                {tab.label}
-                <span className="faq-tab-count">{tab.count}</span>
+                {sec.label}
+                <span className="faq-tab-count">{sec.count}</span>
               </button>
             ))}
-            {hoveredTab && (
-              <div className="faq-tab-tooltip">
-                {canonicalLookup[hoveredTab]?.description}
-              </div>
-            )}
           </div>
         </div>
 
@@ -443,36 +529,28 @@ export default function FAQBrowse() {
           </div>
         </div>
 
-        {/* FAQ Sections — rendered in canonical category order */}
-        {(() => {
-          const visible = CANONICAL_ORDER
-            .map(id => filteredFaqs[id])
-            .filter(Boolean);
-
-          if (visible.length === 0) {
-            return (
-              <div className="empty-state">
-                <div className="empty-state-icon">🔍</div>
-                <div className="empty-state-text">No FAQs match your search</div>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Try different keywords or{' '}
-                  <Link to="/faq" style={{ color: 'var(--accent-primary-light)' }}>
-                    ask Yaksha directly
-                  </Link>
-                </p>
-              </div>
-            );
-          }
-
-          return visible.map((section) => (
-            <div key={section.id} className="faq-section-group">
+        {/* FAQ Sections */}
+        {Object.keys(filteredFaqs).length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><FaSearch style={{ color: 'var(--text-muted)' }} /></div>
+            <div className="empty-state-text">No FAQs match your search</div>
+            <p style={{ color: 'var(--text-muted)' }}>
+              Try different keywords or{' '}
+              <Link to="/faq" style={{ color: 'var(--accent-primary-light)' }}>
+                ask Yaksha directly
+              </Link>
+            </p>
+          </div>
+        ) : (
+          Object.entries(filteredFaqs).map(([sectionId, section]) => (
+            <div key={sectionId} className="faq-section-group">
               <div className="faq-section-title">
                 <h2>{section.label}</h2>
                 <span className="badge badge-info">{section.faqs.length}</span>
               </div>
 
               {section.faqs.map((faq, i) => {
-                const itemId = `${section.id}-${i}`;
+                const itemId = `${sectionId}-${i}`;
                 const isExpanded = expandedIds.has(itemId);
 
                 return (
@@ -482,19 +560,19 @@ export default function FAQBrowse() {
                       onClick={() => toggleExpand(itemId)}
                     >
                       <span className={`faq-chevron ${isExpanded ? 'expanded' : ''}`}>
-                        ▸
+                        <FaChevronRight />
                       </span>
-                      <span className="faq-item-question">{faq.question}</span>
+                      <span className="faq-item-question">{highlightText(faq.question, searchQuery)}</span>
                     </div>
                     <div className={`faq-item-body ${isExpanded ? 'expanded' : ''}`}>
-                      <div className="faq-item-answer">{faq.answer}</div>
+                      <div className="faq-item-answer">{highlightText(faq.answer, searchQuery)}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          ));
-        })()}
+          ))
+        )}
 
         {/* Bottom CTA */}
         <div style={{
@@ -506,8 +584,8 @@ export default function FAQBrowse() {
             Can't find what you're looking for?
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-            <Link to="/faq" className="btn btn-primary">⚡ Ask Yaksha</Link>
-            <Link to="/faq/community" className="btn btn-secondary">💬 Community Board</Link>
+            <Link to="/faq" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FaBolt /> Ask Yaksha</Link>
+            <Link to="/faq/community" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FaCommentDots /> Community Board</Link>
           </div>
         </div>
       </div>

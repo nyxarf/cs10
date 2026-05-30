@@ -24,8 +24,14 @@ const questionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['open', 'answered', 'closed'],
-    default: 'open',
+    enum: ['open', 'answered', 'review', 'hidden', 'closed'],
+    default: 'review',
+  },
+  priority: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 10,
   },
   answer_count: {
     type: Number,
@@ -43,10 +49,22 @@ const questionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  search_frequency: {
+    type: Number,
+    default: 0,
+  },
+  engagement_time: {
+    type: Number,
+    default: 0,
+  },
   net_score: {
     type: Number,
     default: 0,
   },
+  reports: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   created_at: {
     type: Date,
     default: Date.now,

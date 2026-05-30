@@ -33,7 +33,7 @@ class AuthService {
     }
 
     const password_hash = await bcrypt.hash(password, 12);
-    const allowedRoles = ['asker', 'answerer'];
+    const allowedRoles = ['asker', 'answerer', 'both'];
     const userRole = allowedRoles.includes(role) ? role : 'asker';
 
     const user = await User.create({

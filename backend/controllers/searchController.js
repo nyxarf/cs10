@@ -21,6 +21,23 @@ class SearchController {
     const result = await runYakshaPipeline(query.trim(), history);
     res.json(result);
   });
+  /**
+   * Submit helpful/unhelpful feedback on a cached Yaksha response.
+   */
+  feedback = catchAsync(async (req, res) => {
+    const { cacheId, helpful } = req.body;
+    if (!cacheId) return res.json({ success: true }); // No cache to update
+
+    // We can just log it or update the semantic cache entry
+    try {
+      const SemanticCache = (await import('../models/SemanticCache.js')).default;
+      const sentiment = helpful ? 'positive' : 'negative';
+      await SemanticCache.findByIdAndUpdate(cacheId, { sentiment });
+    } catch (e) {
+      console.error('Feedback failed:', e.message);
+    }
+    res.json({ success: true });
+  });
 }
 
 export default new SearchController();

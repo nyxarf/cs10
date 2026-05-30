@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import questionService from '../services/questionService';
 import { useAuth } from '../context/AuthContext';
+import { FaEdit, FaPaperPlane } from 'react-icons/fa';
 
 const CATEGORIES = ['about', 'timing', 'noc', 'selection', 'work', 'conduct', 'certificate', 'interviews', 'general'];
 
@@ -42,7 +43,7 @@ export default function PostQuestion({ originalQuery, rephrased, suggestedCatego
   return (
     <div className="card slide-up" style={{ marginTop: '1.5rem' }}>
       <div className="card-header">
-        <h3 className="card-title">📝 Post to Community</h3>
+        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><FaEdit /> Post to Community</h3>
       </div>
 
       <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
@@ -86,7 +87,7 @@ export default function PostQuestion({ originalQuery, rephrased, suggestedCatego
         disabled={posting || question.trim().length < 8}
         style={{ width: '100%' }}
       >
-        {posting ? <><div className="spinner" /> Posting...</> : '📤 Post to Community'}
+        {posting ? <><div className="spinner" /> Posting...</> : <><FaPaperPlane /> Post to Community</>}
       </button>
     </div>
   );

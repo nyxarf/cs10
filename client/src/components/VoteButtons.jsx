@@ -17,11 +17,19 @@ export default function VoteButtons({ answerId, questionId, initialScore = 0, is
     if (voted || disabled) return;
     setError(null);
 
+    // Optimistic Update
+    const previousScore = score;
+    const change = type === 'up' ? 1 : -1;
+    setScore(score + change);
+    setVoted(type); // Store vote type to allow visualizing it
+
     try {
       const res = await api.post(endpoint, { type });
-      setScore(res.data.net_score);
-      setVoted(true);
+      setScore(res.data.net_score); // Sync with actual server score
     } catch (err) {
+      // Revert on failure
+      setScore(previousScore);
+      setVoted(false);
       const msg = err.response?.data?.error || 'Vote failed';
       setError(msg);
     }

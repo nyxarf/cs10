@@ -1,5 +1,6 @@
 import adminService from '../services/adminService.js';
 import { clusterAllFAQs, syncCanonicalCategories, getClusterStats, CANONICAL_CATEGORIES } from '../services/clusteringService.js';
+import { evaluateAnswerReward } from '../services/groq.js';
 import catchAsync from '../utils/catchAsync.js';
 
 /**
@@ -42,6 +43,15 @@ class AdminController {
   });
 
   /**
+   * Get raw Groq API logs.
+   */
+  getGroqLogs = catchAsync(async (req, res) => {
+    const { limit } = req.query;
+    const result = await adminService.getGroqLogs({ limit });
+    res.json(result);
+  });
+
+  /**
    * Lists all flagged community answers.
    */
   getFlaggedAnswers = catchAsync(async (req, res) => {
@@ -72,6 +82,76 @@ class AdminController {
     const { id } = req.params;
     const result = await adminService.rejectAnswer(id);
     res.json(result);
+  });
+
+  /**
+   * Get pending questions
+   */
+  getPendingQuestions = catchAsync(async (req, res) => {
+    const result = await adminService.getPendingQuestions();
+    res.json(result);
+  });
+
+  /**
+   * Approve a pending question
+   */
+  approvePendingQuestion = catchAsync(async (req, res) => {
+    const { askerXp } = req.body;
+    const result = await adminService.approvePendingQuestion(
+      req.params.id,
+      { askerXp },
+      req.user._id
+    );
+    res.json(result);
+  });
+
+  /**
+   * Reject a pending question
+   */
+  rejectPendingQuestion = catchAsync(async (req, res) => {
+    const result = await adminService.rejectPendingQuestion(req.params.id);
+    res.json(result);
+  });
+
+  /**
+   * Auto-moderates all currently flagged answers using Groq AI.
+   */
+  autoModerateAnswers = catchAsync(async (req, res) => {
+    const flaggedRes = await adminService.getFlaggedAnswers();
+    const flagged = flaggedRes.data || [];
+    
+    let approved = 0;
+    let rejected = 0;
+    let totalAnswererXp = 0;
+
+    for (const a of flagged) {
+      try {
+        const questionText = a.question_id?.rephrased_query || a.question_id?.original_query || '';
+        const evaluation = await evaluateAnswerReward(questionText, a.content);
+
+        if (evaluation.action === 'reject') {
+          await adminService.rejectAnswer(a._id.toString());
+          rejected++;
+        } else {
+          await adminService.approveAnswer({
+            id: a._id.toString(),
+            answererXp: evaluation.answererXp,
+            askerXp: evaluation.askerXp,
+            adminId: req.user._id,
+          });
+          approved++;
+          totalAnswererXp += evaluation.answererXp;
+        }
+      } catch (err) {
+        console.error(`Failed to auto-moderate answer ${a._id}:`, err);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Auto-moderation complete. Approved: ${approved}, Rejected: ${rejected}, Total Answerer SP awarded: ${totalAnswererXp}.`,
+      stats: { approved, rejected, totalAnswererXp }
+    });
   });
 
   /**
@@ -170,8 +250,8 @@ class AdminController {
    * Lists community questions for moderation views.
    */
   getQuestions = catchAsync(async (req, res) => {
-    const { page } = req.query;
-    const result = await adminService.getQuestions(page);
+    const { page, limit } = req.query;
+    const result = await adminService.getQuestions({ page, limit });
     res.json(result);
   });
 
@@ -286,6 +366,15 @@ class AdminController {
     const { masterQuestion, masterAnswer, category, questionIds, tags } = req.body;
     const result = await adminService.createMasterFaq({ masterQuestion, masterAnswer, category, questionIds, tags });
     res.status(201).json(result);
+  });
+
+  /**
+   * Get all spotlighted questions (open, unanswered, 2+ minutes old).
+   */
+  getSpotlightedQuestions = catchAsync(async (req, res) => {
+    const { page, limit } = req.query;
+    const result = await adminService.getSpotlightedQuestions({ page, limit });
+    res.json(result);
   });
 }
 

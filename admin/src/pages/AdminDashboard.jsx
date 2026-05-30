@@ -1,13 +1,32 @@
 import { useState, useEffect } from 'react';
 import { adminDashboard } from '../services/api';
+import { useNavigate } from 'react-router-dom';
 import {
   LuCircleHelp, LuTag, LuMessageSquare, LuClock, LuFileQuestion,
-  LuTrendingUp, LuActivity, LuCircleCheck, LuCircleX, LuRefreshCw, LuUsers, LuGlobe
+  LuTrendingUp, LuActivity, LuCircleCheck, LuCircleX, LuRefreshCw, LuUsers, LuGlobe, LuZap
 } from 'react-icons/lu';
 
-function StatCard({ icon: Icon, label, value, color, bgColor, sub }) {
+function StatCard({ icon: Icon, label, value, color, bgColor, sub, to }) {
+  const navigate = useNavigate();
+  const clickable = Boolean(to);
   return (
-    <div className="stat-card fade-in">
+    <div
+      className="stat-card fade-in"
+      onClick={clickable ? () => navigate(to) : undefined}
+      style={{
+        cursor: clickable ? 'pointer' : 'default',
+        transition: 'transform 0.15s, box-shadow 0.15s',
+      }}
+      onMouseEnter={clickable ? (e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = `0 8px 24px ${color}22`;
+      } : undefined}
+      onMouseLeave={clickable ? (e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '';
+      } : undefined}
+      title={clickable ? `Go to ${label}` : undefined}
+    >
       <div className="stat-card-icon" style={{ background: bgColor }}>
         <Icon size={20} style={{ color }} />
       </div>
@@ -31,6 +50,7 @@ function ActionBadge({ action }) {
 export default function AdminDashboard() {
   const [stats, setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   const load = () => {
     setLoading(true);
@@ -43,13 +63,13 @@ export default function AdminDashboard() {
   useEffect(() => { load(); }, []);
 
   const cards = [
-    { icon: LuCircleHelp,   label: 'Total FAQs',       value: stats?.faqCount ?? '—',              color: '#4f46e5', bgColor: '#ede9fe', sub: 'in knowledge base' },
-    { icon: LuTag,          label: 'Categories',        value: stats?.categoryCount ?? '—',          color: '#0891b2', bgColor: '#cffafe', sub: 'topic groups' },
-    { icon: LuUsers,        label: 'Total Users',       value: stats?.userCount ?? '—',              color: '#16a34a', bgColor: '#dcfce7', sub: 'registered members' },
-    { icon: LuGlobe,        label: 'Community Qs',      value: stats?.communityQueryCount ?? '—',    color: '#8b5cf6', bgColor: '#ede9fe', sub: 'from the community' },
-    { icon: LuMessageSquare,label: 'Search Queries',    value: stats?.queryCount ?? '—',             color: '#059669', bgColor: '#d1fae5', sub: 'search deflections' },
-    { icon: LuClock,        label: 'Pending Answers',   value: stats?.pendingModeration ?? '—',      color: '#d97706', bgColor: '#fef3c7', sub: 'awaiting review' },
-    { icon: LuFileQuestion, label: 'FAQ Proposals',     value: stats?.pendingFaqProposals ?? '—',    color: '#db2777', bgColor: '#fce7f3', sub: 'from community' },
+    { icon: LuCircleHelp,    label: 'Total FAQs',      value: stats?.faqCount ?? '—',           color: '#4f46e5', bgColor: '#ede9fe', sub: 'in knowledge base',  to: '/faqs' },
+    { icon: LuTag,           label: 'Categories',       value: stats?.categoryCount ?? '—',       color: '#0891b2', bgColor: '#cffafe', sub: 'topic groups',        to: '/faqs' },
+    { icon: LuUsers,         label: 'Total Users',      value: stats?.userCount ?? '—',           color: '#16a34a', bgColor: '#dcfce7', sub: 'registered members',  to: '/users' },
+    { icon: LuGlobe,         label: 'Community Qs',     value: stats?.communityQueryCount ?? '—', color: '#8b5cf6', bgColor: '#ede9fe', sub: 'from the community',   to: '/moderation' },
+    { icon: LuMessageSquare, label: 'Search Queries',   value: stats?.queryCount ?? '—',          color: '#059669', bgColor: '#d1fae5', sub: 'search deflections',   to: '/analytics' },
+    { icon: LuClock,         label: 'Pending Answers',  value: stats?.pendingModeration ?? '—',   color: '#d97706', bgColor: '#fef3c7', sub: 'awaiting review',      to: '/moderation' },
+    { icon: LuFileQuestion,  label: 'FAQ Proposals',    value: stats?.pendingFaqProposals ?? '—', color: '#db2777', bgColor: '#fce7f3', sub: 'from community',       to: '/knowledge' },
   ];
 
   return (
@@ -72,6 +92,36 @@ export default function AdminDashboard() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
           {cards.map(c => <StatCard key={c.label} {...c} />)}
+
+          {/* Spotlight card — clickable, navigates to spotlight page */}
+          <div
+            className="stat-card fade-in"
+            onClick={() => navigate('/spotlight')}
+            style={{
+              cursor: 'pointer',
+              border: '1px solid rgba(251,191,36,0.4)',
+              boxShadow: '0 0 0 1px rgba(251,191,36,0.1), 0 4px 20px rgba(251,191,36,0.08)',
+              transition: 'transform 0.15s, box-shadow 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 0 0 1px rgba(251,191,36,0.25), 0 8px 28px rgba(251,191,36,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 0 0 1px rgba(251,191,36,0.1), 0 4px 20px rgba(251,191,36,0.08)';
+            }}
+            title="View spotlighted questions"
+          >
+            <div className="stat-card-icon" style={{ background: 'rgba(251,191,36,0.15)' }}>
+              <LuZap size={20} style={{ color: '#FBBF24' }} />
+            </div>
+            <div className="stat-card-label">Spotlight</div>
+            <div className="stat-card-value" style={{ color: '#FBBF24' }}>
+              {stats?.spotlightedCount ?? '—'}
+            </div>
+            <div className="stat-card-sub" style={{ color: 'rgba(251,191,36,0.7)' }}>needs answers</div>
+          </div>
         </div>
       )}
 

@@ -12,9 +12,10 @@ const searchRateLimit = createRateLimiter({
   max: 10,
 });
 
-/**
- * Full Yaksha search pipeline
- */
-router.post('/ask', searchRateLimit, searchController.ask);
+// Chat endpoint (multi-turn logic managed by frontend passing history)
+router.post('/ask', searchController.ask);
+
+// Feedback endpoint
+router.post('/feedback', searchController.feedback);
 
 export default router;

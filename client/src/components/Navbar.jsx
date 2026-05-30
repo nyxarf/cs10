@@ -1,9 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaBolt, FaStar, FaHome } from 'react-icons/fa';
+import { useTheme } from '../context/ThemeContext';
+import { FaBolt, FaStar, FaSun, FaMoon } from 'react-icons/fa';
 
 export default function Navbar() {
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
 
   const isActive = (path) => location.pathname === path ? 'navbar-link active' : 'navbar-link';
@@ -11,7 +13,17 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="container navbar-inner">
-        <Link to="/" className="navbar-brand"><FaBolt style={{ color: '#FCD34D' }} /> Samagama</Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Link to="/" className="navbar-brand"><FaBolt style={{ color: '#FCD34D' }} /> Samagama</Link>
+          <button 
+            onClick={toggleTheme} 
+            className="btn btn-icon btn-secondary" 
+            style={{ borderRadius: '50%', padding: '0.4rem', width: '32px', height: '32px' }}
+            title="Toggle Theme"
+          >
+            {theme === 'dark' ? <FaSun style={{ color: '#FCD34D' }} /> : <FaMoon style={{ color: '#6366f1' }} />}
+          </button>
+        </div>
 
         <div className="navbar-links">
           <Link to="/faq" className={isActive('/faq')}>Ask Yaksha</Link>
@@ -38,12 +50,6 @@ export default function Navbar() {
               <Link to="/register" className="btn btn-sm btn-primary">Sign Up</Link>
             </>
           )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', paddingLeft: '1rem' }}>
-          <Link to="/faq/browse" className="btn btn-sm btn-secondary" title="Home - Browse FAQs" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <FaHome size={13} /> Home
-          </Link>
         </div>
       </div>
     </nav>

@@ -106,8 +106,28 @@ export async function adminRejectSubmission(id) {
   return data;
 }
 
+export async function adminAutoModerate() {
+  const { data } = await api.post('/admin/moderation/auto-moderate');
+  return data;
+}
+
 export async function adminPromoteSubmission(id, { answererXp, askerXp } = {}) {
   const { data } = await api.post(`/admin/answers/${id}/promote`, { answererXp, askerXp });
+  return data;
+}
+
+export async function adminGetPendingQuestions() {
+  const { data } = await api.get('/admin/moderation/questions');
+  return data;
+}
+
+export async function adminApproveQuestion(id, { askerXp } = {}) {
+  const { data } = await api.post(`/admin/moderation/questions/${id}/approve`, { askerXp });
+  return data;
+}
+
+export async function adminRejectQuestion(id) {
+  const { data } = await api.post(`/admin/moderation/questions/${id}/reject`);
   return data;
 }
 
@@ -135,6 +155,11 @@ export async function adminGetAnalytics(params) {
 
 export async function adminGetQueryLogs(params) {
   const { data } = await api.get('/admin/query-logs', { params });
+  return data;
+}
+
+export async function adminGetGroqLogs(params) {
+  const { data } = await api.get('/admin/groq-logs', { params });
   return data;
 }
 
@@ -187,6 +212,11 @@ export async function adminGetCommunityQuestions(params) {
 
 export async function adminDeleteCommunityQuestion(id) {
   const { data } = await api.delete(`/admin/community/questions/${id}`);
+  return data;
+}
+
+export async function adminGetSpotlightedQuestions(params) {
+  const { data } = await api.get('/admin/spotlight', { params });
   return data;
 }
 

@@ -61,10 +61,19 @@ export async function runYakshaPipeline(cleanedQuery, history = []) {
   const { answer, sentiment } = await synthesizeAnswer(cleanedQuery, history, faqs);
 
   // Step 8: Cache the result (ONLY if this is the first turn / no history)
+  let cacheId = null;
   if (!hasHistory) {
-    cacheResponse(queryEmbedding, cleanedQuery, answer, sentiment).catch(err =>
-      console.error('⚠️ Cache write failed:', err.message)
-    );
+    try {
+      const cacheEntry = await SemanticCache.create({
+        original_query: cleanedQuery,
+        query_embedding: queryEmbedding,
+        groq_response: answer,
+        sentiment,
+      });
+      cacheId = cacheEntry._id;
+    } catch (err) {
+      console.error('⚠️ Cache write failed:', err.message);
+    }
   }
 
   return {
@@ -72,6 +81,7 @@ export async function runYakshaPipeline(cleanedQuery, history = []) {
     sentiment,
     source: 'yaksha',
     escalate: false,
+    cacheId,
   };
 }
 

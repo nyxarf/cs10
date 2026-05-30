@@ -13,10 +13,6 @@ export default function QuestionDetail() {
   const [answers, setAnswers] = useState([]);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [editingAnswer, setEditingAnswer] = useState(null);
-  const [editContent, setEditContent] = useState('');
-  const [editReason, setEditReason] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -39,23 +35,24 @@ export default function QuestionDetail() {
     fetchData(); // Refresh answers
   };
 
-  const handleEditSubmit = async (answerId) => {
-    setSavingEdit(true);
-    try {
-      await api.put(`/admin/answers/${answerId}/edit`, { content: editContent, reason: editReason });
-      setEditingAnswer(null);
-      fetchData();
-    } catch (error) {
-      alert('Failed to edit answer: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setSavingEdit(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="page">
-        <div className="container loading-center"><div className="spinner spinner-lg" /></div>
+        <div className="container">
+          <div className="skeleton-card" style={{ padding: '2rem', marginBottom: '2rem' }}>
+            <div className="skeleton skeleton-title" style={{ width: '80%', height: '2rem' }}></div>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
+              <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
+            </div>
+          </div>
+          <div className="skeleton skeleton-title" style={{ width: '30%' }}></div>
+          {[1, 2].map(i => (
+            <div key={i} className="skeleton-card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
+              <div className="skeleton skeleton-text" style={{ width: '100%', height: '4rem' }}></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -110,8 +107,28 @@ export default function QuestionDetail() {
                 </p>
               )}
 
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.75rem' }}>
-                Asked by {question.posted_by?.name || 'Anonymous'} · {new Date(question.created_at).toLocaleDateString()}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                  Asked by {question.posted_by?.name || 'Anonymous'} · {new Date(question.created_at).toLocaleDateString()}
+                </div>
+                {isAuthenticated && (
+                  <button 
+                    onClick={async () => {
+                      if(window.confirm('Are you sure you want to report this question as off-topic or spam?')) {
+                        try {
+                          await api.post(`/questions/${question._id}/report`);
+                          alert('Question reported successfully.');
+                        } catch (err) {
+                          alert(err.response?.data?.error || 'Failed to report question');
+                        }
+                      }
+                    }}
+                    className="btn btn-sm"
+                    style={{ background: 'transparent', color: 'var(--accent-danger)', border: '1px solid var(--accent-danger)', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                  >
+                    Report
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -156,20 +173,7 @@ export default function QuestionDetail() {
                       {answer.promoted_to_corpus && (
                         <span className="badge badge-success" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FaCheckCircle /> In FAQ corpus</span>
                       )}
-                      {(user?._id === answer.answered_by?._id || user?.role === 'admin') && (
-                        <button className="btn btn-sm" style={{ background: 'transparent', padding: '0 5px' }} onClick={() => { setEditingAnswer(answer._id); setEditContent(answer.content); setEditReason(''); }}>Edit</button>
-                      )}
                     </div>
-                    {editingAnswer === answer._id && (
-                      <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <textarea className="input" value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} />
-                        <input type="text" className="input" placeholder="Reason for edit" value={editReason} onChange={e => setEditReason(e.target.value)} />
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button className="btn btn-sm btn-primary" onClick={() => handleEditSubmit(answer._id)} disabled={savingEdit}>{savingEdit ? 'Saving...' : 'Save'}</button>
-                          <button className="btn btn-sm btn-secondary" onClick={() => setEditingAnswer(null)}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

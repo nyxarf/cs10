@@ -49,6 +49,9 @@ class AdminService {
    * Get dashboard stats.
    */
   async getDashboard() {
+    const SPOTLIGHT_THRESHOLD_MS = 2 * 60 * 1000;
+    const spotlightCutoff = new Date(Date.now() - SPOTLIGHT_THRESHOLD_MS);
+
     const faqCount = await FAQ.countDocuments();
     const categoryCount = await FAQCategory.countDocuments();
     const userCount = await User.countDocuments();
@@ -59,6 +62,11 @@ class AdminService {
       promoted_to_corpus: { $ne: true },
       net_score: { $gte: 3 }
     });
+    const spotlightedCount = await Question.countDocuments({
+      status: 'open',
+      answer_count: 0,
+      created_at: { $lt: spotlightCutoff },
+    });
     const recentLogs = await SemanticCache.find().sort({ created_at: -1 }).limit(10).lean();
 
     return {
@@ -68,6 +76,7 @@ class AdminService {
       communityQueryCount,
       pendingModeration,
       pendingFaqProposals,
+      spotlightedCount,
       recentLogs,
     };
   }
@@ -76,25 +85,151 @@ class AdminService {
    * Get analytics.
    */
   async getAnalytics(period = '7d') {
-    const totalQueries = await SemanticCache.countDocuments();
-    
-    // Calculate average confidence based on sentiment or mock it.
-    // A more precise implementation would need a real confidence score, we mock for now.
-    const avgConfidence = 0.85;
+    const GroqLog = (await import('../models/GroqLog.js')).default;
 
-    const actionDistribution = {
-      answer: await SemanticCache.countDocuments({ sentiment: { $in: ['positive', 'neutral'] } }),
-      clarify: await SemanticCache.countDocuments({ sentiment: 'negative' }),
-      reject: 0,
-    };
+    const days = period === '90d' ? 90 : period === '30d' ? 30 : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const categoryDistribution = []; // Would require aggregation, empty for now to satisfy UI
+    // ── 1. Total counts ────────────────────────────────────────────────
+    const [totalQueries, totalQuestions, totalAnswers, totalFaqs, totalUsers] = await Promise.all([
+      SemanticCache.countDocuments(),
+      Question.countDocuments(),
+      Answer.countDocuments({ status: 'live' }),
+      FAQ.countDocuments(),
+      User.countDocuments(),
+    ]);
+
+    // ── 2. Daily query volume (SemanticCache hits per day) ─────────────
+    const dailyVolume = await SemanticCache.aggregate([
+      { $match: { created_at: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+          queries: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // ── 3. Daily community questions posted ────────────────────────────
+    const dailyCommunity = await Question.aggregate([
+      { $match: { created_at: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+          questions: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Merge into unified time series
+    const dateMap = {};
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      dateMap[key] = { date: key, queries: 0, questions: 0 };
+    }
+    dailyVolume.forEach(r => { if (dateMap[r._id]) dateMap[r._id].queries = r.queries; });
+    dailyCommunity.forEach(r => { if (dateMap[r._id]) dateMap[r._id].questions = r.questions; });
+    const timeSeries = Object.values(dateMap);
+
+    // ── 4. Category distribution (real Questions data) ─────────────────
+    const categoryDistribution = await Question.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+    ]);
+
+    // ── 5. Answer status breakdown ─────────────────────────────────────
+    const answerStatusBreakdown = await Answer.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    // ── 6. Question status breakdown ───────────────────────────────────
+    const questionStatusBreakdown = await Question.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    // ── 7. Top SP earners ──────────────────────────────────────────────
+    const topEarners = await User.find()
+      .select('name role xp answers_count questions_count')
+      .sort({ xp: -1 })
+      .limit(8)
+      .lean();
+
+    // ── 8. User role distribution ──────────────────────────────────────
+    const userRoleDistribution = await User.aggregate([
+      { $group: { _id: '$role', count: { $sum: 1 } } },
+    ]);
+
+    // ── 9. Sentiment breakdown from SemanticCache ──────────────────────
+    const sentimentBreakdown = await SemanticCache.aggregate([
+      { $group: { _id: '$sentiment', count: { $sum: 1 } } },
+    ]);
+
+    // ── 10. Groq token usage summary ──────────────────────────────────
+    const groqTokenStats = await GroqLog.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalTokens: { $sum: '$tokens_total' },
+          totalPromptTokens: { $sum: '$tokens_prompt' },
+          totalCompletionTokens: { $sum: '$tokens_completion' },
+          totalCalls: { $sum: 1 },
+        },
+      },
+    ]);
+    const groqDailyTokens = await GroqLog.aggregate([
+      { $match: { created_at: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+          tokens: { $sum: '$tokens_total' },
+          calls: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // ── 11. Promoted answers ───────────────────────────────────────────
+    const promotedCount = await Answer.countDocuments({ promoted_to_corpus: true });
+    const avgScore = await Answer.aggregate([
+      { $match: { status: 'live' } },
+      { $group: { _id: null, avg: { $avg: '$net_score' } } },
+    ]);
 
     return {
+      // Totals
       totalQueries,
-      avgConfidence,
-      actionDistribution,
+      totalQuestions,
+      totalAnswers,
+      totalFaqs,
+      totalUsers,
+      promotedCount,
+      avgAnswerScore: avgScore[0]?.avg?.toFixed(2) ?? 0,
+      avgConfidence: 0.85,
+
+      // Time series
+      timeSeries,
+      groqDailyTokens,
+
+      // Distributions
       categoryDistribution,
+      answerStatusBreakdown,
+      questionStatusBreakdown,
+      sentimentBreakdown,
+      userRoleDistribution,
+      topEarners,
+
+      // Groq stats
+      groqStats: groqTokenStats[0] || { totalTokens: 0, totalCalls: 0 },
+
+      // Legacy compat
+      actionDistribution: {
+        answer:  sentimentBreakdown.find(s => s._id !== 'negative')?.count ?? 0,
+        clarify: sentimentBreakdown.find(s => s._id === 'negative')?.count ?? 0,
+      },
     };
   }
 
@@ -115,6 +250,16 @@ class AdminService {
     }));
 
     return { items: formattedLogs };
+  }
+
+  /**
+   * Get raw Groq API logs.
+   */
+  async getGroqLogs({ limit = 100 }) {
+    const GroqLog = (await import('../models/GroqLog.js')).default;
+    const limitNum = Math.min(200, parseInt(limit) || 100);
+    const logs = await GroqLog.find().sort({ created_at: -1 }).limit(limitNum).lean();
+    return { data: logs, total: logs.length };
   }
 
   /**
@@ -216,7 +361,60 @@ class AdminService {
 
     await Answer.findByIdAndUpdate(answer._id, { status: 'hidden' });
 
-    return { success: true, message: 'Answer rejected and hidden permanently.' };
+    return { message: 'Answer permanently rejected and hidden.' };
+  }
+
+  /**
+   * List all questions pending review.
+   */
+  async getPendingQuestions() {
+    const pendingQuestions = await Question.find({ status: 'review' })
+      .populate('posted_by', 'name email xp')
+      .sort({ created_at: 1 })
+      .lean();
+
+    return { data: pendingQuestions, total: pendingQuestions.length };
+  }
+
+  /**
+   * Approve a pending question
+   */
+  async approvePendingQuestion(questionId, { askerXp = 15 } = {}, adminId) {
+    const question = await Question.findById(questionId).populate('posted_by');
+    if (!question) throw new AppError('Question not found.', 404);
+    if (question.status !== 'review') throw new AppError(`Question status is ${question.status}, cannot approve.`, 400);
+
+    question.status = 'open';
+    await question.save();
+
+    // Reward the asker
+    if (askerXp > 0 && question.posted_by) {
+      await User.findByIdAndUpdate(question.posted_by._id, { $inc: { xp: askerXp } });
+      await SPLedger.create({
+        user: question.posted_by._id,
+        amount: askerXp,
+        reason: 'Question approved from moderation queue',
+        admin: adminId,
+        referenceModel: 'Question',
+        referenceId: question._id
+      });
+    }
+
+    return { message: 'Question approved and set to open.', question };
+  }
+
+  /**
+   * Reject a pending question
+   */
+  async rejectPendingQuestion(questionId) {
+    const question = await Question.findById(questionId);
+    if (!question) throw new AppError('Question not found.', 404);
+    if (question.status !== 'review') throw new AppError(`Question status is ${question.status}, cannot reject.`, 400);
+
+    question.status = 'hidden';
+    await question.save();
+
+    return { message: 'Question rejected and hidden.' };
   }
 
   /**
@@ -761,28 +959,30 @@ class AdminService {
 
   /**
    * Fetch all community questions (paginated) for admin operations.
-   * Sorted by upvotes/net_score as primary signal, then by recency.
+   * Sorted by recency to show new questions at the top.
    *
-   * @param {number} page - Page number
+   * @param {Object} params - Query parameters
+   * @param {number} params.page - Page number
+   * @param {number} params.limit - Limit per page
    * @returns {Promise<{data: Array, total: number, page: number, pages: number}>}
    */
-  async getQuestions(page = 1) {
+  async getQuestions({ page = 1, limit = 30 } = {}) {
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limit = 30;
-    const skip = (pageNum - 1) * limit;
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 30));
+    const skip = (pageNum - 1) * limitNum;
 
     const [questions, total] = await Promise.all([
       Question.find()
         .populate('posted_by', 'name email')
         .select('rephrased_query original_query category status answer_count net_score upvotes created_at posted_by')
-        .sort({ net_score: -1, upvotes: -1, created_at: -1 })
+        .sort({ created_at: -1 })
         .skip(skip)
-        .limit(limit)
+        .limit(limitNum)
         .lean(),
       Question.countDocuments(),
     ]);
 
-    return { data: questions, total, page: pageNum, pages: Math.ceil(total / limit) };
+    return { data: questions, total, page: pageNum, pages: Math.ceil(total / limitNum) };
   }
 
   /**
@@ -1017,6 +1217,46 @@ class AdminService {
       success: true,
       message: 'Master FAQ successfully added to Knowledge Base.',
       faq_id: faq._id,
+    };
+  }
+
+  /**
+   * Get all spotlighted questions (open, unanswered, older than 2 minutes).
+   * Sorted newest-first within the spotlight criteria.
+   *
+   * @param {Object} options
+   * @param {number} [options.page=1]   - Page number
+   * @param {number} [options.limit=20] - Results per page
+   * @returns {Promise<{data: Array, total: number, page: number, pages: number}>}
+   */
+  async getSpotlightedQuestions({ page = 1, limit = 20 } = {}) {
+    const SPOTLIGHT_THRESHOLD_MS = 2 * 60 * 1000;
+    const spotlightCutoff = new Date(Date.now() - SPOTLIGHT_THRESHOLD_MS);
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = {
+      status: 'open',
+      answer_count: 0,
+      created_at: { $lt: spotlightCutoff },
+    };
+
+    const [questions, total] = await Promise.all([
+      Question.find(filter)
+        .populate('posted_by', 'name email xp')
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Question.countDocuments(filter),
+    ]);
+
+    return {
+      data: questions.map((q) => ({ ...q, is_spotlighted: true })),
+      total,
+      page: pageNum,
+      pages: Math.ceil(total / limitNum),
     };
   }
 }

@@ -1,5 +1,7 @@
+import { FaRobot, FaBolt, FaThumbsUp, FaThumbsDown, FaStar } from 'react-icons/fa';
+import { HiSparkles } from 'react-icons/hi';
+
 export default function YakshaAnswer({ answer, sentiment, source, onHelpful, onNotHelpful }) {
-  const showEmpathy = sentiment === 'frustrated' || sentiment === 'confused';
 
   const renderFormattedAnswer = (text) => {
     if (!text) return null;
@@ -80,7 +82,7 @@ export default function YakshaAnswer({ answer, sentiment, source, onHelpful, onN
             borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
             paddingBottom: '0.4rem'
           }}>
-            <span style={{ color: 'var(--accent-secondary)' }}>✨</span>
+            <span style={{ color: 'var(--accent-secondary)', display: 'flex' }}><HiSparkles /></span>
             {parseInlineStyles(headingText)}
           </h4>
         );
@@ -142,10 +144,12 @@ export default function YakshaAnswer({ answer, sentiment, source, onHelpful, onN
     <div className="card slide-up" style={{ marginTop: '1.5rem', border: '1px solid var(--border-active)' }}>
       <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-          🤖 Yaksha Answer
+          <FaRobot /> Yaksha Answer
         </h3>
         <span className={`badge ${source === 'cache' ? 'badge-info' : 'badge-primary'}`}>
-          {source === 'cache' ? '✨ Cache Direct' : '⚡ Live Synthesized'}
+          {source === 'cache'
+            ? <><HiSparkles style={{ marginRight: '0.25rem' }} /> Cache Direct</>
+            : <><FaBolt style={{ marginRight: '0.25rem' }} /> Live Synthesized</>}
         </span>
       </div>
 
@@ -159,7 +163,7 @@ export default function YakshaAnswer({ answer, sentiment, source, onHelpful, onN
           marginBottom: '1rem',
           borderRadius: '0 var(--radius-sm) var(--radius-sm) 0'
         }}>
-          💛 We understand this can be confusing — here's what we found:
+          <FaStar style={{ color: '#f59e0b', marginRight: '0.4rem' }} /> We understand this can be confusing — here's what we found:
         </div>
       )}
 
@@ -175,11 +179,11 @@ export default function YakshaAnswer({ answer, sentiment, source, onHelpful, onN
       </div>
 
       <div style={{ display: 'flex', gap: '1rem' }}>
-        <button className="btn btn-success" onClick={onHelpful} style={{ flex: 1, padding: '0.75rem' }}>
-          👍 Yes, this helped
+        <button className="btn btn-success" onClick={onHelpful} style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          <FaThumbsUp /> Yes, this helped
         </button>
-        <button className="btn btn-secondary" onClick={onNotHelpful} style={{ flex: 1, padding: '0.75rem' }}>
-          👎 No, I need more help
+        <button className="btn btn-secondary" onClick={onNotHelpful} style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          <FaThumbsDown /> No, I need more help
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FaSearch } from 'react-icons/fa';
 
 export default function QueryInput({ onSubmit, loading }) {
   const [query, setQuery] = useState('');
@@ -42,7 +43,7 @@ export default function QueryInput({ onSubmit, loading }) {
         {loading ? (
           <><div className="spinner" /> Searching...</>
         ) : (
-          <>🔍 Ask Yaksha</>
+          <><FaSearch /> Ask Yaksha</>
         )}
       </button>
     </form>

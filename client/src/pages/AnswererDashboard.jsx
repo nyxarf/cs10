@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { FaCheckCircle, FaCommentDots } from 'react-icons/fa';
 
 const CATEGORIES = ['about', 'timing', 'noc', 'selection', 'work', 'conduct', 'certificate', 'interviews', 'general'];
 
@@ -61,7 +62,7 @@ export default function AnswererDashboard() {
           </div>
           <div>
             {loading ? <div className="loading-center"><div className="spinner spinner-lg" /></div> : questions.length === 0 ? (
-              <div className="empty-state"><div className="empty-state-icon">✅</div><div className="empty-state-text">No open questions</div></div>
+              <div className="empty-state"><div className="empty-state-icon"><FaCheckCircle style={{ color: 'var(--accent-success)' }} /></div><div className="empty-state-text">No open questions</div></div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {questions.map(q => (
@@ -71,7 +72,7 @@ export default function AnswererDashboard() {
                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <span className="badge badge-primary">{q.category}</span>
                         {q.answer_count === 0 && <span className="badge badge-danger">Unanswered</span>}
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>💬 {q.answer_count}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FaCommentDots /> {q.answer_count}</span>
                       </div>
                     </div>
                   </Link>
