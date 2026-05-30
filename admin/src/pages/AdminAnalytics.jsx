@@ -4,8 +4,9 @@ import {
   LuMessageSquare, LuCircleHelp, LuUsers, LuTrendingUp,
   LuRefreshCw, LuSearch, LuDatabase, LuCoins, LuSparkles,
   LuCircleCheck, LuCircleX, LuTriangleAlert, LuBrain,
-  LuZap, LuActivity, LuBarChart, LuRocket,
+  LuZap, LuActivity, LuChartBar, LuRocket,
 } from 'react-icons/lu';
+
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
@@ -231,7 +232,7 @@ export default function AdminAnalytics() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <LuBarChart size={22} style={{ color: 'var(--primary)' }} /> Analytics
+            <LuChartBar size={22} style={{ color: 'var(--primary)' }} /> Analytics
           </h1>
           <p>Live insights from every layer of the Samagama platform</p>
         </div>
@@ -303,7 +304,7 @@ export default function AdminAnalytics() {
       {/* ── Row 2: Category bar + Answer Pie + Question Pie ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
         {/* Category bar */}
-        <ChartCard title="Questions by Category" icon={LuBarChart}>
+        <ChartCard title="Questions by Category" icon={LuChartBar}>
           {loading ? <div className="skeleton" style={{ height: 240 }} /> : categoryData.length === 0 ? (
             <p style={{ color: 'var(--text-3)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>No community questions yet.</p>
           ) : (
