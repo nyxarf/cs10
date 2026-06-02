@@ -220,4 +220,58 @@ export async function adminGetSpotlightedQuestions(params) {
   return data;
 }
 
+// ─── NEW: Full-spectrum moderation APIs ───────────────────────────────────────
+
+/**
+ * Get all community questions with optional status filter.
+ * status: 'all' | 'open' | 'answered' | 'review' | 'hidden' | 'closed'
+ */
+export async function adminGetAllQuestions(params) {
+  const { data } = await api.get('/admin/questions', { params });
+  return data;
+}
+
+/**
+ * Change a community question's status.
+ * status: 'open' | 'answered' | 'review' | 'hidden' | 'closed'
+ */
+export async function adminUpdateQuestionStatus(id, status) {
+  const { data } = await api.patch(`/admin/questions/${id}/status`, { status });
+  return data;
+}
+
+/**
+ * Get all community answers with optional status filter.
+ * status: 'all' | 'live' | 'flagged' | 'hidden'
+ */
+export async function adminGetAllAnswers(params) {
+  const { data } = await api.get('/admin/answers', { params });
+  return data;
+}
+
+/**
+ * Change a community answer's status.
+ * status: 'live' | 'flagged' | 'hidden'
+ */
+export async function adminUpdateAnswerStatus(id, status) {
+  const { data } = await api.patch(`/admin/answers/${id}/status`, { status });
+  return data;
+}
+
+/**
+ * Toggle pin state of a community question.
+ */
+export async function adminPinQuestion(id) {
+  const { data } = await api.patch(`/admin/questions/${id}/pin`);
+  return data;
+}
+
+/**
+ * Toggle pin state of an FAQ.
+ */
+export async function adminPinFaq(id) {
+  const { data } = await api.patch(`/admin/faqs/${id}/pin`);
+  return data;
+}
+
 export default api;

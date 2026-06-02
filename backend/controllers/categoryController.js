@@ -4,7 +4,8 @@ import catchAsync from '../utils/catchAsync.js';
 class CategoryController {
   getCategories = catchAsync(async (req, res) => {
     const { tree, flat } = await categoryService.getTree();
-    res.json({ tree, flat });
+    // `categories` = flat list for frontend dropdowns; `tree` for hierarchical views
+    res.json({ tree, flat, categories: flat });
   });
 
   getCategory = catchAsync(async (req, res) => {

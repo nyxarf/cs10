@@ -5,6 +5,7 @@ import FAQCategory from '../models/FAQCategory.js';
 import User from '../models/User.js';
 import SemanticCache from '../models/SemanticCache.js';
 import { getEmbedding } from './embeddingService.js';
+import logger from '../utils/logger.js';
 import AppError from '../utils/appError.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -55,25 +56,37 @@ class AdminService {
     const faqCount = await FAQ.countDocuments();
     const categoryCount = await FAQCategory.countDocuments();
     const userCount = await User.countDocuments();
-    const communityQueryCount = await Question.countDocuments();
+    // Counts ONLY questions visible to users (open + answered).
+    // Hidden, review, and closed questions are excluded — matching the community board.
+    const VISIBLE_STATUSES = ['open', 'answered'];
+    const communityQueryCount = await Question.countDocuments({ status: { $in: VISIBLE_STATUSES } });
+
     const pendingModeration = await Answer.countDocuments({ status: 'flagged' });
     const pendingFaqProposals = await Answer.countDocuments({
       status: 'live',
       promoted_to_corpus: { $ne: true },
       net_score: { $gte: 3 }
     });
+
+    // Spotlighted = open, zero answers, older than 2 min — EXCLUDES hidden/review.
+    // This matches the isSpotlighted() logic in questionService.js.
     const spotlightedCount = await Question.countDocuments({
       status: 'open',
       answer_count: 0,
       created_at: { $lt: spotlightCutoff },
     });
-    const recentLogs = await SemanticCache.find().sort({ created_at: -1 }).limit(10).lean();
+
+    const [recentLogs, totalSearchQueries] = await Promise.all([
+      SemanticCache.find().sort({ created_at: -1 }).limit(10).lean(),
+      SemanticCache.countDocuments(),
+    ]);
 
     return {
       faqCount,
       categoryCount,
       userCount,
       communityQueryCount,
+      totalSearchQueries,
       pendingModeration,
       pendingFaqProposals,
       spotlightedCount,
@@ -91,9 +104,11 @@ class AdminService {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     // ── 1. Total counts ────────────────────────────────────────────────
+    const VISIBLE_STATUSES = ['open', 'answered'];
     const [totalQueries, totalQuestions, totalAnswers, totalFaqs, totalUsers] = await Promise.all([
       SemanticCache.countDocuments(),
-      Question.countDocuments(),
+      // Match community board: only open + answered questions
+      Question.countDocuments({ status: { $in: VISIBLE_STATUSES } }),
       Answer.countDocuments({ status: 'live' }),
       FAQ.countDocuments(),
       User.countDocuments(),
@@ -111,9 +126,9 @@ class AdminService {
       { $sort: { _id: 1 } },
     ]);
 
-    // ── 3. Daily community questions posted ────────────────────────────
+    // ── 3. Daily community questions posted (visible questions only) ────
     const dailyCommunity = await Question.aggregate([
-      { $match: { created_at: { $gte: since } } },
+      { $match: { created_at: { $gte: since }, status: { $in: VISIBLE_STATUSES } } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
@@ -134,8 +149,9 @@ class AdminService {
     dailyCommunity.forEach(r => { if (dateMap[r._id]) dateMap[r._id].questions = r.questions; });
     const timeSeries = Object.values(dateMap);
 
-    // ── 4. Category distribution (real Questions data) ─────────────────
+    // ── 4. Category distribution (visible questions only) ─────────────
     const categoryDistribution = await Question.aggregate([
+      { $match: { status: { $in: VISIBLE_STATUSES } } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 10 },
@@ -389,15 +405,22 @@ class AdminService {
 
     // Reward the asker
     if (askerXp > 0 && question.posted_by) {
-      await User.findByIdAndUpdate(question.posted_by._id, { $inc: { xp: askerXp } });
-      await SPLedger.create({
-        user: question.posted_by._id,
-        amount: askerXp,
-        reason: 'Question approved from moderation queue',
-        admin: adminId,
-        referenceModel: 'Question',
-        referenceId: question._id
-      });
+      const asker = await User.findById(question.posted_by._id);
+      if (asker) {
+        const oldBalance = asker.xp;
+        const newXp = Math.max(0, asker.xp + askerXp);
+        await User.findByIdAndUpdate(asker._id, { xp: newXp });
+        if (adminId) {
+          await SPLedger.create({
+            user_id: asker._id,
+            admin_id: adminId,
+            amount: askerXp,
+            reason: 'Question approved from moderation queue',
+            old_balance: oldBalance,
+            new_balance: newXp,
+          });
+        }
+      }
     }
 
     return { message: 'Question approved and set to open.', question };
@@ -563,7 +586,7 @@ class AdminService {
       }
     } catch (semanticError) {
       if (semanticError.statusCode === 409) throw semanticError;
-      console.error('⚠️ Semantic dedup check failed during promotion:', semanticError.message);
+      logger.warn('AdminService', `Semantic dedup check failed during promotion: ${semanticError.message}`);
     }
 
     const combinedText = `${question.rephrased_query} ${answer.content}`;
@@ -571,7 +594,7 @@ class AdminService {
     try {
       embedding = await getEmbedding(combinedText.substring(0, 512));
     } catch (embErr) {
-      console.error('⚠️ Embedding generation failed during promotion, using zero fallback:', embErr.message);
+      logger.warn('AdminService', `Embedding generation failed during promotion, using zero fallback: ${embErr.message}`);
       embedding = new Array(384).fill(0.0);
     }
 
@@ -736,8 +759,8 @@ class AdminService {
 
     const [faqs, total] = await Promise.all([
       FAQ.find()
-        .select('category_path question answer source created_at')
-        .sort({ created_at: -1 })
+        .select('category_path question answer source created_at tags keywords priority views fingerprint is_pinned')
+        .sort({ is_pinned: -1, created_at: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -777,7 +800,7 @@ class AdminService {
       try {
         existingFingerprint.embedding = await getEmbedding(`${normalizedQuestion} ${normalizedAnswer}`.substring(0, 512));
       } catch (embErr) {
-        console.error('⚠️ Embedding failed during FAQ update:', embErr.message);
+        logger.warn('AdminService', `Embedding failed during FAQ update: ${embErr.message}`);
       }
       await existingFingerprint.save();
       return {
@@ -820,14 +843,14 @@ class AdminService {
       }
     } catch (semanticError) {
       if (semanticError.statusCode === 409) throw semanticError;
-      console.error('⚠️ Semantic dedup check failed:', semanticError.message);
+      logger.warn('AdminService', `Semantic dedup check failed: ${semanticError.message}`);
     }
 
     let embedding;
     try {
       embedding = await getEmbedding(`${normalizedQuestion} ${normalizedAnswer}`.substring(0, 512));
     } catch (embErr) {
-      console.error('⚠️ Embedding failed for manual FAQ creation, using zero fallback:', embErr.message);
+      logger.warn('AdminService', `Embedding failed for manual FAQ creation, using zero fallback: ${embErr.message}`);
       embedding = new Array(384).fill(0.0);
     }
 
@@ -880,7 +903,7 @@ class AdminService {
         const embedding = await getEmbedding(`${q} ${a}`.substring(0, 512));
         faq.embedding = embedding;
       } catch (embErr) {
-        console.error('⚠️ Embedding failed for manual FAQ update:', embErr.message);
+        logger.warn('AdminService', `Embedding failed for manual FAQ update: ${embErr.message}`);
       }
     }
 
@@ -966,20 +989,23 @@ class AdminService {
    * @param {number} params.limit - Limit per page
    * @returns {Promise<{data: Array, total: number, page: number, pages: number}>}
    */
-  async getQuestions({ page = 1, limit = 30 } = {}) {
+  async getQuestions({ page = 1, limit = 30, status } = {}) {
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 30));
     const skip = (pageNum - 1) * limitNum;
 
+    const filter = {};
+    if (status && status !== 'all') filter.status = status;
+
     const [questions, total] = await Promise.all([
-      Question.find()
+      Question.find(filter)
         .populate('posted_by', 'name email')
-        .select('rephrased_query original_query category status answer_count net_score upvotes created_at posted_by')
+        .select('rephrased_query original_query category category_label status answer_count net_score upvotes created_at posted_by')
         .sort({ created_at: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      Question.countDocuments(),
+      Question.countDocuments(filter),
     ]);
 
     return { data: questions, total, page: pageNum, pages: Math.ceil(total / limitNum) };
@@ -1002,6 +1028,61 @@ class AdminService {
       success: true,
       message: `Question and ${deletedCount} associated answer(s) deleted.`,
     };
+  }
+
+  /**
+   * Update a question's moderation status.
+   */
+  async updateQuestionStatus(id, status) {
+    const question = await Question.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true }
+    ).lean();
+    if (!question) throw new AppError('Question not found.', 404);
+    return { success: true, message: `Question status updated to "${status}".`, question };
+  }
+
+  /**
+   * List all community answers (paginated, with optional status filter).
+   */
+  async getAnswers({ page = 1, limit = 30, status } = {}) {
+    const pageNum  = Math.max(1, parseInt(page)  || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 30));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const filter = {};
+    if (status && status !== 'all') filter.status = status;
+
+    const [answers, total] = await Promise.all([
+      Answer.find(filter)
+        .populate('answered_by', 'name email')
+        .populate({
+          path: 'question_id',
+          select: 'rephrased_query category category_label posted_by',
+          populate: { path: 'posted_by', select: 'name' },
+        })
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Answer.countDocuments(filter),
+    ]);
+
+    return { data: answers, total, page: pageNum, pages: Math.ceil(total / limitNum) };
+  }
+
+  /**
+   * Update an answer's moderation status.
+   */
+  async updateAnswerStatus(id, status) {
+    const answer = await Answer.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true }
+    ).lean();
+    if (!answer) throw new AppError('Answer not found.', 404);
+    return { success: true, message: `Answer status updated to "${status}".`, answer };
   }
 
   /**
@@ -1090,7 +1171,7 @@ class AdminService {
         try {
           faq.embedding = await getEmbedding(`${faq.question} ${faq.answer}`.substring(0, 512));
         } catch (e) {
-          console.error('Embedding update failed during answer edit:', e);
+          logger.warn('AdminService', `Embedding update failed during answer edit: ${e.message}`);
         }
         await faq.save();
       }
@@ -1186,7 +1267,7 @@ class AdminService {
     try {
       embedding = await getEmbedding(`${masterQuestion} ${masterAnswer}`.substring(0, 512));
     } catch (embErr) {
-      console.error('⚠️ Embedding failed for Master FAQ creation, using zero fallback:', embErr.message);
+      logger.warn('AdminService', `Embedding failed for Master FAQ creation, using zero fallback: ${embErr.message}`);
       embedding = new Array(384).fill(0.0);
     }
 

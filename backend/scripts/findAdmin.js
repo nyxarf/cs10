@@ -1,0 +1,10 @@
+import '../dns-setup.js';
+import { config } from 'dotenv';
+config();
+await new Promise(r => setTimeout(r, 400));
+import mongoose from 'mongoose';
+await mongoose.connect(process.env.MONGODB_URI);
+import User from '../models/User.js';
+const admin = await User.findOne({ role: 'admin' }).select('email name').lean();
+console.log('Admin user:', JSON.stringify(admin));
+await mongoose.disconnect();

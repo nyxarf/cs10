@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { FaBolt, FaStar, FaSun, FaMoon } from 'react-icons/fa';
+import { FaBolt, FaStar, FaSun, FaMoon, FaTrophy } from 'react-icons/fa';
 
 export default function Navbar() {
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
@@ -29,6 +29,9 @@ export default function Navbar() {
           <Link to="/faq" className={isActive('/faq')}>Ask Yaksha</Link>
           <Link to="/faq/browse" className={isActive('/faq/browse')}>Browse FAQs</Link>
           <Link to="/faq/community" className={isActive('/faq/community')}>Community</Link>
+          <Link to="/leaderboard" className={isActive('/leaderboard')} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <FaTrophy style={{ color: '#fbbf24', fontSize: '0.75rem' }} /> Leaderboard
+          </Link>
 
           {isAuthenticated && (
             <Link to="/answer" className={isActive('/answer')}>Answer</Link>

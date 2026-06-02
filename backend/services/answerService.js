@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import { checkAnswer } from './groq.js';
 import { promoteToCorpus } from './corpus.js';
 import AppError from '../utils/appError.js';
+import logger from '../utils/logger.js';
 
 /**
  * Service managing community answers, relevance checks, scoring, and auto-promotions.
@@ -149,7 +150,7 @@ class AnswerService {
     // Automatically trigger Phase 5: promote to FAQ corpus at score >= 5
     if (updatedAnswer.net_score >= 5 && updatedAnswer.ai_check_passed && !updatedAnswer.promoted_to_corpus) {
       promoteToCorpus(updatedAnswer).catch(err =>
-        console.error('⚠️ Corpus auto-promotion failed:', err.message)
+        logger.warn('AnswerService', `Corpus auto-promotion failed: ${err.message}`)
       );
     }
 

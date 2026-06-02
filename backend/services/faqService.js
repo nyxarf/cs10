@@ -93,8 +93,8 @@ class FAQService {
 
     const [faqs, categories] = await Promise.all([
       FAQ.find(filter)
-        .select('category_path question answer source')
-        .sort({ category_path: 1, question: 1 })
+        .select('category_path question answer source is_pinned')
+        .sort({ is_pinned: -1, category_path: 1, question: 1 })
         .lean(),
       FAQCategory.find().select('path label').lean(),
     ]);

@@ -63,13 +63,14 @@ export default function AdminDashboard() {
   useEffect(() => { load(); }, []);
 
   const cards = [
-    { icon: LuCircleHelp,    label: 'Total FAQs',      value: stats?.faqCount ?? '—',           color: '#4f46e5', bgColor: '#ede9fe', sub: 'in knowledge base',  to: '/faqs' },
-    { icon: LuTag,           label: 'Categories',       value: stats?.categoryCount ?? '—',       color: '#0891b2', bgColor: '#cffafe', sub: 'topic groups',        to: '/faqs' },
-    { icon: LuUsers,         label: 'Total Users',      value: stats?.userCount ?? '—',           color: '#16a34a', bgColor: '#dcfce7', sub: 'registered members',  to: '/users' },
-    { icon: LuGlobe,         label: 'Community Qs',     value: stats?.communityQueryCount ?? '—', color: '#8b5cf6', bgColor: '#ede9fe', sub: 'from the community',   to: '/moderation' },
-    { icon: LuMessageSquare, label: 'Search Queries',   value: stats?.queryCount ?? '—',          color: '#059669', bgColor: '#d1fae5', sub: 'search deflections',   to: '/analytics' },
-    { icon: LuClock,         label: 'Pending Answers',  value: stats?.pendingModeration ?? '—',   color: '#d97706', bgColor: '#fef3c7', sub: 'awaiting review',      to: '/moderation' },
-    { icon: LuFileQuestion,  label: 'FAQ Proposals',    value: stats?.pendingFaqProposals ?? '—', color: '#db2777', bgColor: '#fce7f3', sub: 'from community',       to: '/knowledge' },
+    { icon: LuCircleHelp,    label: 'Total FAQs',      value: stats?.faqCount ?? '—',           color: '#4f46e5', bgColor: '#ede9fe', sub: 'in knowledge base',         to: '/faqs' },
+    { icon: LuTag,           label: 'Categories',       value: stats?.categoryCount ?? '—',       color: '#0891b2', bgColor: '#cffafe', sub: 'topic groups',               to: '/faqs' },
+    { icon: LuUsers,         label: 'Total Users',      value: stats?.userCount ?? '—',           color: '#16a34a', bgColor: '#dcfce7', sub: 'registered members',         to: '/users' },
+    { icon: LuGlobe,         label: 'Community Qs',     value: stats?.communityQueryCount ?? '—', color: '#8b5cf6', bgColor: '#ede9fe', sub: 'open + answered (visible)',  to: '/moderation' },
+    { icon: LuMessageSquare, label: 'Search Queries',   value: stats?.totalSearchQueries ?? '—',  color: '#059669', bgColor: '#d1fae5', sub: 'total AI cache lookups',      to: '/analytics' },
+    { icon: LuClock,         label: 'Pending Answers',  value: stats?.pendingModeration ?? '—',   color: '#d97706', bgColor: '#fef3c7', sub: 'flagged, awaiting review',   to: '/moderation' },
+    { icon: LuFileQuestion,  label: 'FAQ Proposals',    value: stats?.pendingFaqProposals ?? '—', color: '#db2777', bgColor: '#fce7f3', sub: 'community answers to absorb', to: '/knowledge' },
+    { icon: LuZap,           label: 'Engagement',       value: 'View',                             color: '#8b5cf6', bgColor: '#f3e8ff', sub: 'community analytics',        to: '/engagement' },
   ];
 
   return (

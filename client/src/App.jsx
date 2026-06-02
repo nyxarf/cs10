@@ -10,6 +10,7 @@ import UserProfile from './pages/UserProfile';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
+import Leaderboard from './pages/Leaderboard';
 import Footer from './components/Footer';
 import './index.css';
 
@@ -40,6 +41,7 @@ function App() {
                 <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/leaderboard" element={<Leaderboard />} />
               </Routes>
             </main>
           </div>

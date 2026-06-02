@@ -9,6 +9,7 @@ import { getEmbedding } from './embeddingService.js';
 import Question from '../models/Question.js';
 import Answer from '../models/Answer.js';
 import User from '../models/User.js';
+import logger from '../utils/logger.js';
 
 /**
  * Promote a community answer to the FAQ corpus.
@@ -24,7 +25,7 @@ export async function promoteToCorpus(answer) {
     // Fetch the associated question
     const question = await Question.findById(answer.question_id);
     if (!question) {
-      console.error('⚠️ Corpus promotion: question not found for answer', answer._id);
+      logger.warn('Corpus', `Promotion skipped — question not found for answer ${answer._id}`);
       return;
     }
 
@@ -52,9 +53,9 @@ export async function promoteToCorpus(answer) {
     // Award bonus XP to the answerer
     await User.findByIdAndUpdate(answer.answered_by, { $inc: { xp: 25 } });
 
-    console.log(`✅ Answer ${answer._id} promoted to FAQ corpus. Answerer awarded 25 XP.`);
+    logger.success('Corpus', `Answer ${answer._id} promoted to FAQ corpus. Answerer awarded 25 XP.`);
   } catch (error) {
-    console.error('❌ Corpus promotion failed:', error.message);
+    logger.error('Corpus', `Promotion failed: ${error.message}`);
     // Don't throw — promotion failure should not crash the vote endpoint
   }
 }

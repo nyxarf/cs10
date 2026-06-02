@@ -35,28 +35,30 @@ router.get('/flagged', adminController.getFlaggedAnswers);
 router.get('/moderation', adminController.getFlaggedAnswers);
 
 /**
+ * Auto-moderate all flagged answers using Groq
+ * MUST be before /moderation/:id routes to avoid id='auto-moderate' conflict
+ */
+router.post('/moderation/auto-moderate', adminController.autoModerateAnswers);
+
+/**
+ * Pending Questions moderation
+ * MUST be before /moderation/:id routes
+ */
+router.get('/moderation/questions', adminController.getPendingQuestions);
+router.post('/moderation/questions/:id/approve', adminController.approvePendingQuestion);
+router.post('/moderation/questions/:id/reject', adminController.rejectPendingQuestion);
+
+/**
  * Approve a flagged answer + award custom SP to answerer and asker
  */
 router.post('/answers/:id/approve', adminController.approveAnswer);
 router.post('/moderation/:id/approve', adminController.approveAnswer);
 
 /**
- * Auto-moderate all flagged answers using Groq
- */
-router.post('/moderation/auto-moderate', adminController.autoModerateAnswers);
-
-/**
  * Reject a flagged answer permanently
  */
 router.post('/answers/:id/reject', adminController.rejectAnswer);
 router.post('/moderation/:id/reject', adminController.rejectAnswer);
-
-/**
- * Pending Questions moderation
- */
-router.get('/moderation/questions', adminController.getPendingQuestions);
-router.post('/moderation/questions/:id/approve', adminController.approvePendingQuestion);
-router.post('/moderation/questions/:id/reject', adminController.rejectPendingQuestion);
 
 /**
  * Promote a community answer directly into the FAQ corpus
@@ -125,6 +127,11 @@ router.delete('/faqs/:id', adminController.deleteFaq);
  */
 router.put('/faqs/:id', adminController.updateFaq);
 
+/**
+ * Toggle pin state of an FAQ
+ */
+router.patch('/faqs/:id/pin', adminController.pinFaq);
+
 /* ─────────────────────────────────────────────
    Community question management
    ───────────────────────────────────────────── */
@@ -134,6 +141,28 @@ router.put('/faqs/:id', adminController.updateFaq);
  */
 router.get('/questions', adminController.getQuestions);
 router.get('/community/questions', adminController.getQuestions);
+
+/**
+ * Change status of a community question (open / review / hidden / closed)
+ */
+router.patch('/questions/:id/status', adminController.updateQuestionStatus);
+router.patch('/community/questions/:id/status', adminController.updateQuestionStatus);
+
+/**
+ * Toggle pin state of a community question
+ */
+router.patch('/questions/:id/pin', adminController.pinQuestion);
+router.patch('/community/questions/:id/pin', adminController.pinQuestion);
+
+/**
+ * Get all community answers (paginated, with status filter)
+ */
+router.get('/answers', adminController.getAnswers);
+
+/**
+ * Change status of a community answer (live / flagged / hidden)
+ */
+router.patch('/answers/:id/status', adminController.updateAnswerStatus);
 
 /**
  * Permanently delete a community question and all its associated answers

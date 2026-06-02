@@ -53,6 +53,10 @@ const faqSchema = new mongoose.Schema({
     min: 0,
     max: 10,
   },
+  is_pinned: {
+    type: Boolean,
+    default: false,
+  },
   created_at: {
     type: Date,
     default: Date.now,
@@ -68,6 +72,7 @@ faqSchema.index({ category_path: 1 });
 faqSchema.index({ source: 1 });
 faqSchema.index({ created_at: -1 });
 faqSchema.index({ priority: -1 });
+faqSchema.index({ is_pinned: 1 });
 
 // Text index for local keyword search fallback
 faqSchema.index({ question: 'text', answer: 'text' });

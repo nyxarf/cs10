@@ -44,6 +44,16 @@ class FAQService {
     const response = await apiClient.get('/faqs/sections');
     return response.data;
   }
+
+  /**
+   * Requests a Groq-generated mind map tree for a FAQ section.
+   * @param {string} sectionId - The section ID (e.g. 'noc', 'timeline')
+   * @returns {Promise<{root:string, children:Array}>}
+   */
+  async getMindMap(sectionId) {
+    const response = await apiClient.get('/faqs/mindmap', { params: { section: sectionId } });
+    return response.data;
+  }
 }
 
 export default new FAQService();

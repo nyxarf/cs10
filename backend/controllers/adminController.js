@@ -250,8 +250,8 @@ class AdminController {
    * Lists community questions for moderation views.
    */
   getQuestions = catchAsync(async (req, res) => {
-    const { page, limit } = req.query;
-    const result = await adminService.getQuestions({ page, limit });
+    const { page, limit, status } = req.query;
+    const result = await adminService.getQuestions({ page, limit, status });
     res.json(result);
   });
 
@@ -261,6 +261,43 @@ class AdminController {
   deleteQuestion = catchAsync(async (req, res) => {
     const { id } = req.params;
     const result = await adminService.deleteQuestion(id);
+    res.json(result);
+  });
+
+  /**
+   * Updates a community question's status (open / review / hidden / closed).
+   */
+  updateQuestionStatus = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    const VALID = ['open', 'answered', 'review', 'hidden', 'closed'];
+    if (!VALID.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID.join(', ')}` });
+    }
+    const result = await adminService.updateQuestionStatus(id, status);
+    res.json(result);
+  });
+
+  /**
+   * Lists all community answers with optional status filter.
+   */
+  getAnswers = catchAsync(async (req, res) => {
+    const { page, limit, status } = req.query;
+    const result = await adminService.getAnswers({ page, limit, status });
+    res.json(result);
+  });
+
+  /**
+   * Updates a community answer's status (live / flagged / hidden).
+   */
+  updateAnswerStatus = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    const VALID = ['live', 'flagged', 'hidden'];
+    if (!VALID.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID.join(', ')}` });
+    }
+    const result = await adminService.updateAnswerStatus(id, status);
     res.json(result);
   });
 
@@ -375,6 +412,42 @@ class AdminController {
     const { page, limit } = req.query;
     const result = await adminService.getSpotlightedQuestions({ page, limit });
     res.json(result);
+  });
+
+  /**
+   * Toggle pin state on a community question.
+   * PATCH /api/admin/questions/:id/pin
+   */
+  pinQuestion = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const Question = (await import('../models/Question.js')).default;
+    const question = await Question.findById(id);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+    question.is_pinned = !question.is_pinned;
+    await question.save();
+    res.json({
+      success: true,
+      is_pinned: question.is_pinned,
+      message: question.is_pinned ? 'Question pinned.' : 'Question unpinned.',
+    });
+  });
+
+  /**
+   * Toggle pin state on an FAQ.
+   * PATCH /api/admin/faqs/:id/pin
+   */
+  pinFaq = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const FAQ = (await import('../models/FAQ.js')).default;
+    const faq = await FAQ.findById(id);
+    if (!faq) return res.status(404).json({ error: 'FAQ not found' });
+    faq.is_pinned = !faq.is_pinned;
+    await faq.save();
+    res.json({
+      success: true,
+      is_pinned: faq.is_pinned,
+      message: faq.is_pinned ? 'FAQ pinned.' : 'FAQ unpinned.',
+    });
   });
 }
 

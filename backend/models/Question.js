@@ -17,6 +17,17 @@ const questionSchema = new mongoose.Schema({
     lowercase: true,
     trim: true,
   },
+  // Structured category path referencing FAQCategory.path (e.g. "root.noc")
+  category_path: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  category_label: {
+    type: String,
+    trim: true,
+    default: null,
+  },
   posted_by: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -61,6 +72,10 @@ const questionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  is_pinned: {
+    type: Boolean,
+    default: false,
+  },
   reports: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -75,6 +90,7 @@ const questionSchema = new mongoose.Schema({
 questionSchema.index({ status: 1, category: 1 });
 questionSchema.index({ created_at: -1 });
 questionSchema.index({ posted_by: 1 });
+questionSchema.index({ is_pinned: 1 });
 
 const Question = mongoose.model('Question', questionSchema);
 export default Question;

@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCircleHelp, LuShieldCheck, LuChartBar,
-  LuLogOut, LuBell, LuChevronDown, LuZap, LuUsers, LuSparkles
+  LuLogOut, LuBell, LuChevronDown, LuZap, LuUsers, LuSparkles, LuHeartHandshake
 } from 'react-icons/lu';
 
 const navItems = [
@@ -10,8 +10,9 @@ const navItems = [
   { to: '/moderation', label: 'Moderation',        icon: LuShieldCheck },
   { to: '/knowledge',  label: 'Knowledge Review',  icon: LuSparkles },
   { to: '/users',      label: 'Users',             icon: LuUsers },
-  { to: '/analytics',  label: 'Analytics',         icon: LuChartBar },
-  { to: '/spotlight',  label: 'Spotlight',         icon: LuZap, highlight: true },
+  { to: '/analytics',  label: 'Analytics',          icon: LuChartBar },
+  { to: '/engagement',  label: 'Engagement',          icon: LuHeartHandshake },
+  { to: '/spotlight',  label: 'Spotlight',            icon: LuZap, highlight: true },
 ];
 
 const pageTitles = {
@@ -21,6 +22,7 @@ const pageTitles = {
   '/knowledge':  'Knowledge Review',
   '/users':      'User Management',
   '/analytics':  'Analytics',
+  '/engagement':  'Engagement Analytics',
   '/spotlight':  'Community Spotlight',
 };
 

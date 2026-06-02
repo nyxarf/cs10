@@ -9,6 +9,7 @@ import FAQCategory from '../models/FAQCategory.js';
 import SemanticCache from '../models/SemanticCache.js';
 import { synthesizeAnswer, condenseQuery } from './groq.js';
 import { getEmbedding } from './embeddingService.js';
+import logger from '../utils/logger.js';
 
 /**
  * Run the full Yaksha pipeline for a validated query.
@@ -72,7 +73,7 @@ export async function runYakshaPipeline(cleanedQuery, history = []) {
       });
       cacheId = cacheEntry._id;
     } catch (err) {
-      console.error('⚠️ Cache write failed:', err.message);
+      logger.warn('Yaksha.cache', `Semantic cache write failed: ${err.message}`);
     }
   }
 
@@ -112,13 +113,13 @@ async function checkSemanticCache(queryEmbedding) {
     ]);
 
     if (results.length > 0 && results[0].similarity >= 0.95) {
-      console.log(`  📦 Cache hit! Similarity: ${results[0].similarity.toFixed(4)}`);
+      logger.debug('Yaksha.cache', `Cache hit — similarity: ${results[0].similarity.toFixed(4)}`);
       return results[0];
     }
 
     return null;
   } catch (error) {
-    console.error('⚠️ Cache lookup failed:', error.message);
+    logger.warn('Yaksha.cache', `Semantic cache lookup failed: ${error.message}`);
     return null;
   }
 }
@@ -146,7 +147,7 @@ async function findBestCategory(queryEmbedding) {
 
     return 'root'; // Fallback: search all
   } catch (error) {
-    console.error('⚠️ Category routing failed:', error.message);
+    logger.warn('Yaksha.router', `Category routing failed: ${error.message}`);
     return 'root';
   }
 }
@@ -232,14 +233,14 @@ async function hybridSearch(queryEmbedding, queryText, categoryPath) {
 
     return scoredFaqs.slice(0, 3);
   } catch (error) {
-    console.error('⚠️ Hybrid search failed:', error.message);
+    logger.error('Yaksha.search', `Hybrid search failed: ${error.message}`);
 
     // Fallback: try without category filter on database failure
     if (categoryPath !== 'root') {
       try {
         return await hybridSearch(queryEmbedding, queryText, 'root');
       } catch (fallbackError) {
-        console.error('⚠️ Fallback search also failed:', fallbackError.message);
+        logger.error('Yaksha.search', `Fallback search also failed: ${fallbackError.message}`);
         return [];
       }
     }
@@ -259,6 +260,6 @@ async function cacheResponse(queryEmbedding, originalQuery, response, sentiment)
       sentiment,
     });
   } catch (error) {
-    console.error('⚠️ Cache insertion failed:', error.message);
+    logger.warn('Yaksha.cache', `Cache insertion failed: ${error.message}`);
   }
 }

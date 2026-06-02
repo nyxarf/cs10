@@ -54,9 +54,9 @@ class QuestionService {
    * @param {string} data.userId - Creator database ID
    * @returns {Promise<{success: boolean, duplicate?: boolean, existing_question?: string, question_id?: string, message: string}>}
    */
-  async submit({ original_query, rephrased_query, category, userId }) {
-    if (!original_query || !rephrased_query || !category) {
-      throw new AppError('original_query, rephrased_query, and category are required.', 400);
+  async submit({ original_query, rephrased_query, category, category_path, category_label, userId }) {
+    if (!original_query || !rephrased_query) {
+      throw new AppError('original_query and rephrased_query are required.', 400);
     }
 
     const rephrasedClean = rephrased_query.trim();
@@ -116,13 +116,27 @@ class QuestionService {
     if (classification.action === 'review') status = 'review';
     if (classification.action === 'hide') status = 'hidden';
 
-    // 4. Create the question
+    // 4. Use provided category_path or fallback to Groq categorization
+    let finalCategoryPath  = category_path  || null;
+    let finalCategoryLabel = category_label || null;
+    if (!finalCategoryPath) {
+      const { categorizeQuestion } = await import('./groq.js');
+      const cat = await categorizeQuestion(rephrasedClean);
+      finalCategoryPath  = cat.path;
+      finalCategoryLabel = cat.label;
+    }
+    // Legacy slug-based category — map from path for backward compat
+    const legacySlug = finalCategoryPath?.split('.')?.pop() || category || 'general';
+
+    // 5. Create the question
     const question = await Question.create({
-      original_query: original_query.trim(),
+      original_query:  original_query.trim(),
       rephrased_query: rephrasedClean,
-      category: category.toLowerCase().trim(),
-      posted_by: userId,
-      status: status,
+      category:        legacySlug,
+      category_path:   finalCategoryPath,
+      category_label:  finalCategoryLabel,
+      posted_by:       userId,
+      status,
     });
 
     // 4. Increment user's question count
@@ -141,14 +155,27 @@ class QuestionService {
    * @param {Object} queryOptions - Filters and paging values
    * @returns {Promise<{data: Array, total: number, page: number, pages: number}>}
    */
-  async list({ category, status = 'open', page = 1, sort = 'newest', limit = 20 } = {}) {
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
-    const skip = (pageNum - 1) * limitNum;
+  async list({ category, category_path, status = 'open', page = 1, sort = 'newest', limit = 20, search } = {}) {
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // 100 allows full spotlight fetch
+    const skip     = (pageNum - 1) * limitNum;
 
     const filter = {};
-    if (category) filter.category = category.toLowerCase();
+    // Prefer category_path (DB-based) filter; fall back to legacy slug-based category
+    if (category_path) {
+      filter.category_path = category_path;
+    } else if (category) {
+      filter.category = category.toLowerCase();
+    }
     if (status && status !== 'all') filter.status = status;
+    // Full-text search across rephrased and original query fields
+    if (search && search.trim()) {
+      const rx = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [
+        { rephrased_query: rx },
+        { original_query:  rx },
+      ];
+    }
 
     const sortOptions = {};
     switch (sort) {
@@ -206,14 +233,24 @@ class QuestionService {
 
       await User.populate(questions, { path: 'posted_by', select: 'name' });
 
-      // Attach spotlight flag and sort spotlighted questions first
+      // Attach spotlight flag and sort: pinned → spotlighted → regular
+      const spotlightCutoff = new Date(Date.now() - SPOTLIGHT_THRESHOLD_MS);
       const withSpotlight = questions.map((q) => ({ ...q, is_spotlighted: isSpotlighted(q) }));
-      const spotlighted = withSpotlight.filter((q) => q.is_spotlighted);
-      const regular = withSpotlight.filter((q) => !q.is_spotlighted);
+      const pinned      = withSpotlight.filter((q) => q.is_pinned);
+      const spotlighted = withSpotlight.filter((q) => !q.is_pinned && q.is_spotlighted);
+      const regular     = withSpotlight.filter((q) => !q.is_pinned && !q.is_spotlighted);
+
+      // spotlightTotal = full DB count of spotlighted questions (not page-relative)
+      const spotlightTotal = await Question.countDocuments({
+        status: 'open',
+        answer_count: 0,
+        created_at: { $lt: spotlightCutoff },
+      });
 
       return {
-        data: [...spotlighted, ...regular],
+        data: [...pinned, ...spotlighted, ...regular],
         total,
+        spotlightTotal,
         page: pageNum,
         pages: Math.ceil(total / limitNum),
       };
@@ -229,14 +266,24 @@ class QuestionService {
       Question.countDocuments(filter),
     ]);
 
-    // Attach spotlight flag and sort spotlighted questions first
+    // Attach spotlight flag and sort: pinned → spotlighted → regular
+    const spotlightCutoff = new Date(Date.now() - SPOTLIGHT_THRESHOLD_MS);
     const withSpotlight = questions.map((q) => ({ ...q, is_spotlighted: isSpotlighted(q) }));
-    const spotlighted = withSpotlight.filter((q) => q.is_spotlighted);
-    const regular = withSpotlight.filter((q) => !q.is_spotlighted);
+    const pinned      = withSpotlight.filter((q) => q.is_pinned);
+    const spotlighted = withSpotlight.filter((q) => !q.is_pinned && q.is_spotlighted);
+    const regular     = withSpotlight.filter((q) => !q.is_pinned && !q.is_spotlighted);
+
+    // spotlightTotal = full DB count of spotlighted questions (not page-relative)
+    const spotlightTotal = await Question.countDocuments({
+      status: 'open',
+      answer_count: 0,
+      created_at: { $lt: spotlightCutoff },
+    });
 
     return {
-      data: [...spotlighted, ...regular],
+      data: [...pinned, ...spotlighted, ...regular],
       total,
+      spotlightTotal,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
     };

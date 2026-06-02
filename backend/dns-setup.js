@@ -1,14 +1,15 @@
-// backend/dns-setup.js
-import dns from 'node:dns';
-
 /**
- * Global DNS Override for Local Development
- * Resolves 'querySrv ECONNREFUSED' errors caused by regional ISP blocks on MongoDB Atlas.
+ * dns-setup.js
+ * Overrides Node.js DNS resolution to use public resolvers.
+ * Prevents 'querySrv ECONNREFUSED' failures caused by ISP-level
+ * blocks on MongoDB Atlas SRV records in restricted networks.
+ *
+ * Must be imported before any network-dependent module.
  */
+import dns from 'node:dns';
+import logger from './utils/logger.js';
+
 if (process.env.NODE_ENV !== 'production') {
-  console.log('Applying local DNS override for MongoDB SRV resolution...');
-  dns.setServers([
-    "1.1.1.1", // Cloudflare
-    "8.8.8.8"  // Google
-  ]);
+  dns.setServers(['1.1.1.1', '8.8.8.8']); // Cloudflare + Google
+  logger.info('DNS', 'Public DNS resolvers active (1.1.1.1, 8.8.8.8)');
 }

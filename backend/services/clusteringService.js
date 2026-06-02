@@ -12,6 +12,7 @@
 import FAQ from '../models/FAQ.js';
 import FAQCategory from '../models/FAQCategory.js';
 import { getEmbedding } from './embeddingService.js';
+import logger from '../utils/logger.js';
 
 // ─── Category Definitions ────────────────────────────────────────────────────
 // These are the 14 canonical FAQ categories.
@@ -182,7 +183,7 @@ export async function getCategoryEmbeddings() {
   if (_categoryEmbeddingCache) return _categoryEmbeddingCache;
 
   const cache = new Map();
-  console.log('🔢 Computing embeddings for', CANONICAL_CATEGORIES.length, 'category centroids...');
+  logger.info('Clustering', `Computing embeddings for ${CANONICAL_CATEGORIES.length} category centroids...`);
 
   await Promise.all(
     CANONICAL_CATEGORIES.map(async (cat) => {
@@ -193,7 +194,7 @@ export async function getCategoryEmbeddings() {
   );
 
   _categoryEmbeddingCache = cache;
-  console.log('✅ Category centroid embeddings ready.');
+  logger.success('Clustering', 'Category centroid embeddings computed and cached.');
   return cache;
 }
 
@@ -275,7 +276,7 @@ export async function clusterAllFAQs({ dryRun = false, scope = 'all', onProgress
   }
 
   const total = await FAQ.countDocuments(filter);
-  console.log(`🎯 Clustering ${total} FAQs (scope=${scope}, dryRun=${dryRun})...`);
+  logger.info('Clustering', `Starting clustering job — ${total} FAQs (scope: ${scope}, dryRun: ${dryRun})`);
 
   const categoryEmbeddings = await getCategoryEmbeddings();
   const cursor = FAQ.find(filter).lean().cursor();
@@ -330,7 +331,7 @@ export async function clusterAllFAQs({ dryRun = false, scope = 'all', onProgress
     results,
   };
 
-  console.log(`✅ Clustering complete. ${changedCount}/${total} FAQs re-categorized.`);
+  logger.success('Clustering', `Job complete — ${changedCount}/${total} FAQs re-categorized.`);
   return summary;
 }
 
@@ -364,7 +365,7 @@ export async function syncCanonicalCategories() {
     }
   }
 
-  console.log(`✅ Synced ${results.length} canonical categories.`);
+  logger.success('Clustering', `Canonical category sync complete — ${results.length} categories processed.`);
   return results;
 }
 

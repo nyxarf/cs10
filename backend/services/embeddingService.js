@@ -10,6 +10,7 @@
  */
 
 import { pipeline } from '@xenova/transformers';
+import logger from '../utils/logger.js';
 
 let extractor = null;
 
@@ -18,9 +19,9 @@ let extractor = null;
  */
 async function getLocalExtractor() {
   if (!extractor) {
-    console.log('⏳ Loading local embedding model (Xenova/all-MiniLM-L6-v2)...');
+    logger.info('Embeddings', 'Loading local model (Xenova/all-MiniLM-L6-v2)...');
     extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    console.log('✅ Local embedding model loaded successfully!');
+    logger.success('Embeddings', 'Local embedding model loaded.');
   }
   return extractor;
 }
@@ -75,7 +76,7 @@ async function generateRemoteEmbedding(text) {
     }
     throw new Error('Invalid response structure from external embedding service');
   } catch (error) {
-    console.error('❌ External embedding generation failed, falling back to local model:', error.message);
+    logger.warn('Embeddings', `Remote embedding failed, falling back to local model: ${error.message}`);
     return generateLocalEmbedding(text);
   }
 }

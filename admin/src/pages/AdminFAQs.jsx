@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { adminGetFaqs, adminCreateFAQ, adminUpdateFAQ, adminDeleteFAQ, adminDeduplicateFaqs } from '../services/api';
+import { adminGetFaqs, adminCreateFAQ, adminUpdateFAQ, adminDeleteFAQ, adminDeduplicateFaqs, adminPinFaq } from '../services/api';
 import {
   LuPlus, LuPen, LuTrash, LuSearch, LuCircleHelp,
   LuTag, LuEye, LuX, LuCircleCheck, LuTriangleAlert,
-  LuScanLine, LuShieldCheck, LuCopy
+  LuScanLine, LuShieldCheck, LuCopy, LuPin, LuPinOff
 } from 'react-icons/lu';
 
 const EMPTY_FORM = { question: '', answer: '', category_path: '', tags: '', keywords: '', priority: 0 };
@@ -159,6 +159,15 @@ export default function AdminFAQs() {
       await load(faqs.length === 1 && page > 1 ? page - 1 : page);
       await loadAllForDupeCheck();
     } catch { showToast('Delete failed.', 'error'); }
+  };
+
+  const handlePin = async (id) => {
+    try {
+      const res = await adminPinFaq(id);
+      showToast(res.message);
+      // Optimistic update — flip local state instantly
+      setFaqs(prev => prev.map(f => f._id === id ? { ...f, is_pinned: res.is_pinned } : f));
+    } catch { showToast('Pin toggle failed.', 'error'); }
   };
 
   const handleDeduplicate = async () => {
@@ -363,6 +372,22 @@ export default function AdminFAQs() {
                 </div>
                 {/* Actions */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                  {/* Pin toggle */}
+                  <button
+                    onClick={() => handlePin(faq._id)}
+                    title={faq.is_pinned ? 'Unpin FAQ' : 'Pin FAQ to top'}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      padding: '5px 10px', borderRadius: 6, border: '1px solid',
+                      cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', transition: 'all 0.15s',
+                      ...(faq.is_pinned
+                        ? { background: 'rgba(251,191,36,0.18)', borderColor: 'rgba(251,191,36,0.6)', color: '#FBBF24' }
+                        : { background: 'transparent', borderColor: 'var(--border)', color: 'var(--text-3)' }),
+                    }}
+                  >
+                    {faq.is_pinned ? <LuPin size={12} /> : <LuPinOff size={12} />}
+                    {faq.is_pinned ? 'Pinned' : 'Pin'}
+                  </button>
                   <button onClick={() => handleEdit(faq)} className="btn btn-secondary btn-sm"
                     style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     <LuPen size={13} /> Edit
