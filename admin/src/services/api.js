@@ -1,10 +1,13 @@
 import axios from 'axios';
 
+// Create a configured Axios instance for all admin API calls.
+// The baseURL is relative so the same client works in dev and production.
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
+// Attach the saved admin JWT token to every request if present.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('adminToken');
   if (token) {
@@ -13,10 +16,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Global response interceptor handles unauthorized access and forces login.
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
+      // Clear cached admin auth data and redirect to login when token is invalid.
       localStorage.removeItem('adminToken');
       localStorage.removeItem('adminUser');
       if (window.location.pathname !== '/login') {
@@ -28,6 +33,7 @@ api.interceptors.response.use(
 );
 
 // Admin Authentication
+// Login and dashboard endpoints for admin user authentication and summary data.
 export async function adminLogin(email, password) {
   const { data } = await api.post('/admin/login', { email, password });
   return data;
@@ -39,6 +45,7 @@ export async function adminDashboard() {
 }
 
 // Admin Category APIs
+// CRUD operations for managing FAQ categories from the admin panel.
 export async function getCategories() {
   const { data } = await api.get('/categories');
   return data;
@@ -60,6 +67,7 @@ export async function adminDeleteCategory(id) {
 }
 
 // Admin FAQ APIs
+// Public and admin FAQ endpoints used for listing, creating, updating, and deleting FAQs.
 export async function getFAQs(params) {
   const { data } = await api.get('/faqs', { params });
   return data;
@@ -91,6 +99,7 @@ export async function adminDeduplicateFaqs() {
 }
 
 // Admin Moderation - Answer Submissions
+// Endpoints for reviewing, approving, rejecting, and promoting submitted answers.
 export async function adminGetModeration(params) {
   const { data } = await api.get('/admin/moderation', { params });
   return data;
@@ -132,6 +141,7 @@ export async function adminRejectQuestion(id) {
 }
 
 // Admin Moderation - FAQ Proposals (from students)
+// Endpoints to review and moderate submitted FAQ proposals.
 export async function adminGetFaqProposals(params) {
   const { data } = await api.get('/admin/faq-proposals', { params });
   return data;
@@ -148,6 +158,7 @@ export async function adminRejectFaqProposal(id) {
 }
 
 // Admin Analytics & Auditing
+// Endpoints for analytics, query logs, and GROQ logs used in admin reports.
 export async function adminGetAnalytics(params) {
   const { data } = await api.get('/admin/analytics', { params });
   return data;
@@ -169,6 +180,7 @@ export async function adminCreateAdmin(body) {
 }
 
 // Admin Users APIs
+// User management endpoints such as listing users and adjusting SP balances.
 export async function adminGetUsers() {
   const { data } = await api.get('/admin/users');
   return data;
@@ -185,6 +197,7 @@ export async function adminGetSpLedger(params) {
 }
 
 // Community integrations for Master FAQs creation
+// Endpoints used to generate community-driven master FAQ content.
 export async function adminGetCommunityMasterCandidates() {
   const { data } = await api.get('/admin/community/master-candidates');
   return data;
